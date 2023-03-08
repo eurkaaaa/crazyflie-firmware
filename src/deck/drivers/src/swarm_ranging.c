@@ -17,6 +17,8 @@ static uint16_t MY_UWB_ADDRESS;
 
 static QueueHandle_t rxQueue;
 static Ranging_Table_Set_t rangingTableSet;
+static Two_Hop_Neighbor_Table_Set_t twoHopNeighborTableSet;
+static MPR_Selector_Set_t mPRSelectorSet;
 static UWB_Message_Listener_t listener;
 static TaskHandle_t uwbRangingTxTaskHandle = 0;
 static TaskHandle_t uwbRangingRxTaskHandle = 0;
@@ -29,6 +31,16 @@ static logVarId_t idVelocityX, idVelocityY, idVelocityZ;
 static float velocity;
 
 int16_t distanceTowards[RANGING_TABLE_SIZE + 1] = {[0 ... RANGING_TABLE_SIZE] = -1};
+
+static bool checkAddress(uint16_t address) {
+  if(MY_UWB_ADDRESS == 1 && (address == 2 || address == 3)) return true;
+  if(MY_UWB_ADDRESS == 2 && (address == 1 || address == 5 || address == 6)) return true;
+  if(MY_UWB_ADDRESS == 3 && (address == 1 || address == 4 || address == 5)) return true;
+  if(MY_UWB_ADDRESS == 4 && address == 3) return true;
+  if(MY_UWB_ADDRESS == 5 && (address == 2 || address == 3)) return true;
+  if(MY_UWB_ADDRESS == 6 && address == 2) return true;
+  return false;
+}
 
 void rangingRxCallback(void *parameters) {
   // DEBUG_PRINT("rangingRxCallback \n");
@@ -44,7 +56,9 @@ void rangingRxCallback(void *parameters) {
   Ranging_Message_t *rangingMessage = (Ranging_Message_t *) packet->payload;
   rxMessageWithTimestamp.rangingMessage = *rangingMessage;
 
-  xQueueSendFromISR(rxQueue, &rxMessageWithTimestamp, &xHigherPriorityTaskWoken);
+  if(checkAddress(rangingMessage->header.srcAddress)){
+    xQueueSendFromISR(rxQueue, &rxMessageWithTimestamp, &xHigherPriorityTaskWoken);
+  }
 }
 
 void rangingTxCallback(void *parameters) {
@@ -92,8 +106,15 @@ static void uwbRangingRxTask(void *parameters) {
 
   while (true) {
     if (xQueueReceive(rxQueue, &rxPacketCache, portMAX_DELAY)) {
-//      DEBUG_PRINT("uwbRangingRxTask: received ranging message \n");
+      // DEBUG_PRINT("uwbRangingRxTask: received ranging message \n");
       processRangingMessage(&rxPacketCache);
+      // TODO: Two hop neighbor compute
+      populateTwoHopNeighborSet(&rxPacketCache);
+      // TODO: Add MPR compute process
+      populateMPRSet();
+      // ADD: calculate MPR selector
+      populateMPRSelectorSet(&rxPacketCache);
+      DEBUG_PRINT("MPR RECORD: %llu \n", mPRNeighborRecord);
     }
   }
 }
@@ -103,6 +124,12 @@ void rangingInit() {
   DEBUG_PRINT("MY_UWB_ADDRESS = %d \n", MY_UWB_ADDRESS);
   rxQueue = xQueueCreate(RANGING_RX_QUEUE_SIZE, RANGING_RX_QUEUE_ITEM_SIZE);
   rangingTableSetInit(&rangingTableSet);
+  // ADD: Two hop neighbor
+  twoHopNeighborTableSetInit(&twoHopNeighborTableSet);
+  // ADD: MPR
+  mPRNeighborRecord = 0;
+  // ADD: MPR selector
+  mPRSelectorSetInit(&mPRSelectorSet);
 
   listener.type = RANGING;
   listener.rxQueue = NULL; // handle rxQueue in swarm_ranging.c instead of adhocdeck.c
@@ -271,6 +298,8 @@ int generateRangingMessage(Ranging_Message_t *rangingMessage) {
   rangingMessage->header.msgLength = sizeof(Ranging_Message_Header_t) + sizeof(Body_Unit_t) * bodyUnitNumber;
   rangingMessage->header.msgSequence = curSeqNumber;
   rangingMessage->header.lastTxTimestamp = TfBuffer[TfBufferIndex];
+  // ADD: MPR record
+  rangingMessage->header.mPRNeighborRecord = mPRNeighborRecord;
   float velocityX = logGetFloat(idVelocityX);
   float velocityY = logGetFloat(idVelocityY);
   float velocityZ = logGetFloat(idVelocityZ);
@@ -278,6 +307,125 @@ int generateRangingMessage(Ranging_Message_t *rangingMessage) {
   /* velocity in cm/s */
   rangingMessage->header.velocity = (short) (velocity * 100);
   return rangingMessage->header.msgLength;
+}
+
+// TODO: Add two hop neighbor expire
+void populateTwoHopNeighborSet(Ranging_Message_With_Timestamp_t *rangingMessageWithTimestamp) {
+  // expire two hop neighbor set
+  twoHopNeighborTableSetClearExpire(&twoHopNeighborTableSet);
+
+  Ranging_Message_t *rangingMessage = &rangingMessageWithTimestamp->rangingMessage;
+  uint16_t oneHopAddress = rangingMessage->header.srcAddress;
+  int8_t bodyUnitNumberMax = (rangingMessage->header.msgLength -
+                             sizeof(Ranging_Message_Header_t)) / sizeof(Body_Unit_t);
+  for(int8_t bodyUnitNumber = 0; bodyUnitNumber < bodyUnitNumberMax; bodyUnitNumber++) {
+    uint16_t twoHopAddress = rangingMessage->bodyUnits[bodyUnitNumber].address;
+    /* Two hop Neighbor judgment */
+    // two hop neighbor is myself
+    if (twoHopAddress == MY_UWB_ADDRESS) continue;
+    // // two hop neighbor have inserted already
+    // if ((((uint64_t)1 << twoHopAddress) & twoHopNeighborRecord) != 0) continue;
+    // one hop address is not in ranging table set
+    if ((((uint64_t)1 << oneHopAddress) & rangingNeighborRecord) == 0) continue;
+    // two hop neighbor is one of my one hop neighbor
+    if (((twoHopNeighborRecord | ((uint64_t)1 << twoHopAddress)) &
+        rangingNeighborRecord) != 0) continue;
+    /* Insert two hop neighbor */
+    set_index_t twoHopNeighborTableIndex = findInTwoHopNeighborTableSet(&twoHopNeighborTableSet,
+                                                                        oneHopAddress, twoHopAddress);
+    if(twoHopNeighborTableIndex == -1) {
+      Two_Hop_Neighbor_Table_t twoHoptable;
+      twoHopNeighborTableInit(&twoHoptable, oneHopAddress, twoHopAddress);
+      twoHopNeighborTableSetInsert(&twoHopNeighborTableSet, &twoHoptable);
+    }
+  }
+}
+
+void populateMPRSet() {
+  // clear MPR neighbor
+  mPRNeighborRecord = 0;
+
+  Neighbor_Record_t coveredTwoHopNeighbor = 0;
+  uint8_t twoHopNeighborReachCount[TWO_HOP_NEIGHBOR_TABLE_SIZE] = {0};
+  /* 1 => find the two hop neighbor which is reachable in a unique way */ 
+  // counted the number of reachable routes for each two-hop neighbor
+  for(set_index_t index = twoHopNeighborTableSet.fullQueueEntry; index != -1;
+      index = twoHopNeighborTableSet.setData[index].next) {
+    uint16_t twoHopAddress = twoHopNeighborTableSet.setData[index].data.twoHopNeighborAddress;
+    twoHopNeighborReachCount[twoHopAddress]++;
+  }
+  // add MPR neighbor
+  for(set_index_t index = twoHopNeighborTableSet.fullQueueEntry; index != -1;
+      index = twoHopNeighborTableSet.setData[index].next) {
+    uint16_t oneHopAddress = twoHopNeighborTableSet.setData[index].data.oneHopNeighborAddress;
+    uint16_t twoHopAddress = twoHopNeighborTableSet.setData[index].data.twoHopNeighborAddress;
+    if(twoHopNeighborReachCount[twoHopAddress] > 1) continue;
+    // add MPR neighbor
+    neighborRecordOpen(&mPRNeighborRecord, oneHopAddress);
+  }
+  // calculate coveredTwoHopNeighbor
+  for(set_index_t index = twoHopNeighborTableSet.fullQueueEntry; index != -1;
+      index = twoHopNeighborTableSet.setData[index].next) {
+    uint16_t oneHopAddress = twoHopNeighborTableSet.setData[index].data.oneHopNeighborAddress;
+    uint16_t twoHopAddress = twoHopNeighborTableSet.setData[index].data.twoHopNeighborAddress;
+    if((((uint64_t)1 << oneHopAddress) & mPRNeighborRecord) == 0) continue;
+    neighborRecordOpen(&coveredTwoHopNeighbor, twoHopAddress);
+  }
+  /* 2 => calculate the one hop neighbors that can maximally cover the remaining two hop nodes */
+  Neighbor_Record_t restTwoHopNeighbor = ~coveredTwoHopNeighbor & twoHopNeighborRecord;
+  while(restTwoHopNeighbor != 0){
+    uint8_t oneHopNeighborReachCapacity[RANGING_TABLE_SIZE] = {0};
+    int16_t bestOneHopNeighbor = -1;
+    uint8_t bestOneHopNeighborCapacity = 0;
+    // calculate capacity
+    for(set_index_t index = twoHopNeighborTableSet.fullQueueEntry; index != -1;
+        index = twoHopNeighborTableSet.setData[index].next) {
+      uint16_t oneHopAddress = twoHopNeighborTableSet.setData[index].data.oneHopNeighborAddress;
+      uint16_t twoHopAddress = twoHopNeighborTableSet.setData[index].data.twoHopNeighborAddress;
+      // two hop neighbor is not in the rest two hop neighbor
+      if((((uint64_t)1 << twoHopAddress) & restTwoHopNeighbor) == 0) continue;
+      oneHopNeighborReachCapacity[oneHopAddress]++;
+    }
+    // find the one hop neighbors which have best capacity
+    for(int address = 0; address < RANGING_TABLE_SIZE; address++) {
+      if(oneHopNeighborReachCapacity[address] > bestOneHopNeighborCapacity) {
+        bestOneHopNeighborCapacity = oneHopNeighborReachCapacity[address];
+        bestOneHopNeighbor = address;
+      }
+    }
+    // add the best one hop neighbor to MPR set, and calculate coveredTwoHopNeighbor
+    neighborRecordOpen(&mPRNeighborRecord, bestOneHopNeighbor);
+    for(set_index_t index = twoHopNeighborTableSet.fullQueueEntry; index != -1;
+        index = twoHopNeighborTableSet.setData[index].next) {
+      uint16_t oneHopAddress = twoHopNeighborTableSet.setData[index].data.oneHopNeighborAddress;
+      uint16_t twoHopAddress = twoHopNeighborTableSet.setData[index].data.twoHopNeighborAddress;
+      if(oneHopAddress == bestOneHopNeighbor) {
+        neighborRecordOpen(&coveredTwoHopNeighbor, twoHopAddress);
+      }
+    }
+    // calculate rest two hop neighbor
+    restTwoHopNeighbor = ~coveredTwoHopNeighbor & twoHopNeighborRecord;
+  }
+}
+
+void populateMPRSelectorSet(Ranging_Message_With_Timestamp_t *rangingMessageWithTimestamp) {
+  // expire MPR Selector Set
+  mPRSelectorSetClearExpire(&mPRSelectorSet);
+
+  Ranging_Message_t *rangingMessage = &rangingMessageWithTimestamp->rangingMessage;
+  uint16_t srcAddress = rangingMessage->header.srcAddress;
+  Neighbor_Record_t mPRNeighborRecord = rangingMessage->header.mPRNeighborRecord;
+  if((((uint64_t)1 << MY_UWB_ADDRESS) & mPRNeighborRecord) != 0) {
+    mPRSelectorSetInsert(&mPRSelectorSet, srcAddress);
+  }
+}
+
+bool isMPRSelector(uint16_t neighborAddress) {
+  Neighbor_Record_t mPRSelectorRecord = mPRSelectorSet.mPRSelectorRecord;
+  if((((uint64_t)1 << neighborAddress) & mPRSelectorRecord) != 0) {
+    return true;
+  }
+  return false;
 }
 
 LOG_GROUP_START(Ranging)

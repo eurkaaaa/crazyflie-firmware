@@ -6,6 +6,17 @@
 #include "task.h"
 #include "debug.h"
 
+/* Neighbor Record Set Operations*/
+// TODO: Optimize priority 
+inline void neighborRecordOpen(Neighbor_Record_t *neighborRecord, uint16_t address) {
+  *neighborRecord |= ((uint64_t) 1) << address;
+}
+
+inline void neighborRecordClose(Neighbor_Record_t *neighborRecord, uint16_t address) {
+  *neighborRecord &= (~((uint64_t) 1)) << address;
+}
+
+/* Ranging Table Set Operations */
 void rangingTableBufferInit(Ranging_Table_Tr_Rr_Buffer_t *rangingTableBuffer) {
   rangingTableBuffer->cur = 0;
   rangingTableBuffer->latest = 0;
@@ -91,12 +102,16 @@ static bool rangingTableSetFree(Ranging_Table_Set_t *rangingTableSet,
   // delete from full queue
   set_index_t pre = rangingTableSet->fullQueueEntry;
   if (item_index == pre) {
+
     rangingTableSet->fullQueueEntry = rangingTableSet->setData[pre].next;
     // insert into empty queue
     rangingTableSet->setData[item_index].next =
         rangingTableSet->freeQueueEntry;
     rangingTableSet->freeQueueEntry = item_index;
     rangingTableSet->size = rangingTableSet->size - 1;
+    // ADD: Ranging neighbor record bit close
+    neighborRecordClose(&rangingNeighborRecord,
+                       rangingTableSet->setData[item_index].data.neighborAddress);
     return true;
   } else {
     while (pre != -1) {
@@ -108,6 +123,9 @@ static bool rangingTableSetFree(Ranging_Table_Set_t *rangingTableSet,
             rangingTableSet->freeQueueEntry;
         rangingTableSet->freeQueueEntry = item_index;
         rangingTableSet->size = rangingTableSet->size - 1;
+        // ADD: Ranging neighbor record bit close
+        neighborRecordClose(&rangingNeighborRecord,
+                           rangingTableSet->setData[item_index].data.neighborAddress);
         return true;
       }
       pre = rangingTableSet->setData[pre].next;
@@ -117,6 +135,9 @@ static bool rangingTableSetFree(Ranging_Table_Set_t *rangingTableSet,
 }
 
 void rangingTableSetInit(Ranging_Table_Set_t *rangingTableSet) {
+  // ADD: ranging record init
+  rangingNeighborRecord = 0;
+
   set_index_t i;
   for (i = 0; i < RANGING_TABLE_SIZE - 1; i++) {
     rangingTableSet->setData[i].next = i + 1;
@@ -133,6 +154,8 @@ set_index_t rangingTableSetInsert(Ranging_Table_Set_t *rangingTableSet,
   if (candidate != -1) {
     memcpy(&rangingTableSet->setData[candidate].data, table,
            sizeof(Ranging_Table_t));
+    // ADD: Ranging neighbor record bit open
+    neighborRecordOpen(&rangingNeighborRecord, table->neighborAddress);
     rangingTableSet->size++;
   }
   return candidate;
@@ -279,5 +302,150 @@ void printRangingMessage(Ranging_Message_t *rangingMessage) {
     DEBUG_PRINT("body_unit_timestamp=%2x%8lx\n",
                 rangingMessage->bodyUnits[i].timestamp.timestamp.high8,
                 rangingMessage->bodyUnits[i].timestamp.timestamp.low32);
+  }
+}
+
+/* Two Hop Neighbor Table Operations */
+void twoHopNeighborTableInit(Two_Hop_Neighbor_Table_t *twoHopNeighborTable,
+                                                      uint16_t oneHopAddress, uint16_t twoHopAddress) {
+  memset(twoHopNeighborTable, 0, sizeof(Two_Hop_Neighbor_Table_t));
+  twoHopNeighborTable->oneHopNeighborAddress = oneHopAddress;
+  twoHopNeighborTable->twoHopNeighborAddress = twoHopAddress;
+  twoHopNeighborTable->expirationTime = xTaskGetTickCount() + M2T(TWO_HOP_NEIGHBOR_TABLE_HOLD_TIME);
+}
+
+/* Two Hop Neighbor Table Set Operations */
+static set_index_t twoHopNeighborTableSetMalloc(
+    Two_Hop_Neighbor_Table_Set_t *twoHopNeighborTableSet) {
+  if (twoHopNeighborTableSet->freeQueueEntry == -1) {
+    DEBUG_PRINT("Two Hop Neighbor Table Set is FULL, malloc failed.\n");
+    return -1;
+  } else {
+    set_index_t candidate = twoHopNeighborTableSet->freeQueueEntry;
+    twoHopNeighborTableSet->freeQueueEntry =
+        twoHopNeighborTableSet->setData[candidate].next;
+    // insert to full queue
+    set_index_t temp = twoHopNeighborTableSet->fullQueueEntry;
+    twoHopNeighborTableSet->fullQueueEntry = candidate;
+    twoHopNeighborTableSet->setData[candidate].next = temp;
+    return candidate;
+  }
+}
+
+static bool twoHopNeighborTableSetFree(Two_Hop_Neighbor_Table_Set_t *twoHopNeighborTableSet,
+                                set_index_t item_index) {
+  if (-1 == item_index) {
+    return true;
+  }
+  // delete from full queue
+  set_index_t pre = twoHopNeighborTableSet->fullQueueEntry;
+  if (item_index == pre) {
+    
+    twoHopNeighborTableSet->fullQueueEntry = twoHopNeighborTableSet->setData[pre].next;
+    // insert into empty queue
+    twoHopNeighborTableSet->setData[item_index].next =
+        twoHopNeighborTableSet->freeQueueEntry;
+    twoHopNeighborTableSet->freeQueueEntry = item_index;
+    twoHopNeighborTableSet->size = twoHopNeighborTableSet->size - 1;
+    neighborRecordClose(&twoHopNeighborRecord,
+                        twoHopNeighborTableSet->setData[item_index].data.twoHopNeighborAddress);
+    return true;
+  } else {
+    while (pre != -1) {
+      if (twoHopNeighborTableSet->setData[pre].next == item_index) {
+        twoHopNeighborTableSet->setData[pre].next =
+            twoHopNeighborTableSet->setData[item_index].next;
+        // insert into empty queue
+        twoHopNeighborTableSet->setData[item_index].next =
+            twoHopNeighborTableSet->freeQueueEntry;
+        twoHopNeighborTableSet->freeQueueEntry = item_index;
+        twoHopNeighborTableSet->size = twoHopNeighborTableSet->size - 1;
+        neighborRecordClose(&twoHopNeighborRecord,
+                            twoHopNeighborTableSet->setData[item_index].data.twoHopNeighborAddress);
+        return true;
+      }
+      pre = twoHopNeighborTableSet->setData[pre].next;
+    }
+  }
+  return false;
+}
+
+void twoHopNeighborTableSetInit(Two_Hop_Neighbor_Table_Set_t *twoHopNeighborTableSet) {
+  twoHopNeighborRecord = 0;
+
+  set_index_t i;
+  for (i = 0; i < TWO_HOP_NEIGHBOR_TABLE_SIZE - 1; i++) {
+    twoHopNeighborTableSet->setData[i].next = i + 1;
+  }
+  twoHopNeighborTableSet->setData[i].next = -1;
+  twoHopNeighborTableSet->freeQueueEntry = 0;
+  twoHopNeighborTableSet->fullQueueEntry = -1;
+  twoHopNeighborTableSet->size = 0;
+}
+
+set_index_t twoHopNeighborTableSetInsert(Two_Hop_Neighbor_Table_Set_t *twoHopNeighborTableSet,
+                                  Two_Hop_Neighbor_Table_t *twoHopNeighborTable) {
+  set_index_t candidate = twoHopNeighborTableSetMalloc(twoHopNeighborTableSet);
+  if (candidate != -1) {
+    memcpy(&twoHopNeighborTableSet->setData[candidate].data, twoHopNeighborTable,
+           sizeof(Two_Hop_Neighbor_Table_t));
+    neighborRecordOpen(&twoHopNeighborRecord, twoHopNeighborTable->twoHopNeighborAddress);
+    twoHopNeighborTableSet->size++;
+  }
+  return candidate;
+}
+
+set_index_t findInTwoHopNeighborTableSet(Two_Hop_Neighbor_Table_Set_t *twoHopNeighborTableSet,
+                                  uint16_t oneHopAddress, uint16_t twoHopAddress) {
+  set_index_t iter = twoHopNeighborTableSet->fullQueueEntry;
+  while (iter != -1) {
+    Two_Hop_Neighbor_Table_Set_Item_t cur = twoHopNeighborTableSet->setData[iter];
+    if (cur.data.oneHopNeighborAddress == oneHopAddress &&
+        cur.data.twoHopNeighborAddress == twoHopAddress) {
+      break;
+    }
+    iter = cur.next;
+  }
+  return iter;
+}
+
+bool twoHopNeighborTableSetClearExpire(Two_Hop_Neighbor_Table_Set_t *twoHopNeighborTableSet) {
+  set_index_t candidate = twoHopNeighborTableSet->fullQueueEntry;
+  Time_t now = xTaskGetTickCount();
+  bool has_changed = false;
+  while (candidate != -1) {
+    Two_Hop_Neighbor_Table_Set_Item_t temp = twoHopNeighborTableSet->setData[candidate];
+    if (temp.data.expirationTime < now) {
+      set_index_t next_index = temp.next;
+      twoHopNeighborTableSetFree(twoHopNeighborTableSet, candidate);
+      candidate = next_index;
+      has_changed = true;
+      continue;
+    }
+    candidate = temp.next;
+  }
+  return has_changed;
+}
+
+/* MPR Selector Set Operations */
+void mPRSelectorSetInit(MPR_Selector_Set_t *mPRSelectorSet) {
+  mPRSelectorSet->mPRSelectorRecord = 0;
+  memset(mPRSelectorSet->expirationTimeSet, 0, sizeof(Time_t) * MPR_NEIGHBOR_SIZE);
+}
+
+void mPRSelectorSetInsert(MPR_Selector_Set_t *mPRSelectorSet, uint16_t mPRSelectorAddress) {
+  Neighbor_Record_t *mPRSelectorRecord = &mPRSelectorSet->mPRSelectorRecord;
+  neighborRecordOpen(mPRSelectorRecord, mPRSelectorAddress);
+  mPRSelectorSet->expirationTimeSet[mPRSelectorAddress] = xTaskGetTickCount() + M2T(MPR_NEIGHBOR_HOLD_TIME);
+}
+
+void mPRSelectorSetClearExpire(MPR_Selector_Set_t *mPRSelectorSet) {
+  Time_t now = xTaskGetTickCount();
+  for(int index = 0; index < MPR_NEIGHBOR_SIZE; index++){
+    if(mPRSelectorSet->expirationTimeSet[index] < now) {
+      Neighbor_Record_t *mPRSelectorRecord = &mPRSelectorSet->mPRSelectorRecord;
+      neighborRecordClose(mPRSelectorRecord, index);
+      mPRSelectorSet->expirationTimeSet[index] = 0;
+    }
   }
 }
