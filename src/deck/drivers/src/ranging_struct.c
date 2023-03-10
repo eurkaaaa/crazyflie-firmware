@@ -7,13 +7,12 @@
 #include "debug.h"
 
 /* Neighbor Record Set Operations*/
-// TODO: Optimize priority 
-inline void neighborRecordOpen(Neighbor_Record_t *neighborRecord, uint16_t address) {
-  *neighborRecord |= ((uint64_t) 1) << address;
+inline void neighborBitMapSet(Neighbor_Bit_Map_t *neighborBitMap, uint16_t address) {
+  *neighborBitMap |= ((uint64_t) 1) << address;
 }
 
-inline void neighborRecordClose(Neighbor_Record_t *neighborRecord, uint16_t address) {
-  *neighborRecord &= (~((uint64_t) 1)) << address;
+inline void neighborBitMapClear(Neighbor_Bit_Map_t *neighborBitMap, uint16_t address) {
+  *neighborBitMap &= (~((uint64_t) 1)) << address;
 }
 
 /* Ranging Table Set Operations */
@@ -110,7 +109,7 @@ static bool rangingTableSetFree(Ranging_Table_Set_t *rangingTableSet,
     rangingTableSet->freeQueueEntry = item_index;
     rangingTableSet->size = rangingTableSet->size - 1;
     // ADD: Ranging neighbor record bit close
-    neighborRecordClose(&rangingNeighborRecord,
+    neighborBitMapClear(&rangingNeighborBitMap,
                        rangingTableSet->setData[item_index].data.neighborAddress);
     return true;
   } else {
@@ -124,7 +123,7 @@ static bool rangingTableSetFree(Ranging_Table_Set_t *rangingTableSet,
         rangingTableSet->freeQueueEntry = item_index;
         rangingTableSet->size = rangingTableSet->size - 1;
         // ADD: Ranging neighbor record bit close
-        neighborRecordClose(&rangingNeighborRecord,
+        neighborBitMapClear(&rangingNeighborBitMap,
                            rangingTableSet->setData[item_index].data.neighborAddress);
         return true;
       }
@@ -136,7 +135,7 @@ static bool rangingTableSetFree(Ranging_Table_Set_t *rangingTableSet,
 
 void rangingTableSetInit(Ranging_Table_Set_t *rangingTableSet) {
   // ADD: ranging record init
-  rangingNeighborRecord = 0;
+  rangingNeighborBitMap = 0;
 
   set_index_t i;
   for (i = 0; i < RANGING_TABLE_SIZE - 1; i++) {
@@ -155,7 +154,7 @@ set_index_t rangingTableSetInsert(Ranging_Table_Set_t *rangingTableSet,
     memcpy(&rangingTableSet->setData[candidate].data, table,
            sizeof(Ranging_Table_t));
     // ADD: Ranging neighbor record bit open
-    neighborRecordOpen(&rangingNeighborRecord, table->neighborAddress);
+    neighborBitMapSet(&rangingNeighborBitMap, table->neighborAddress);
     rangingTableSet->size++;
   }
   return candidate;
@@ -347,7 +346,7 @@ static bool twoHopNeighborTableSetFree(Two_Hop_Neighbor_Table_Set_t *twoHopNeigh
         twoHopNeighborTableSet->freeQueueEntry;
     twoHopNeighborTableSet->freeQueueEntry = item_index;
     twoHopNeighborTableSet->size = twoHopNeighborTableSet->size - 1;
-    neighborRecordClose(&twoHopNeighborRecord,
+    neighborBitMapClear(&twoHopNeighborBitMap,
                         twoHopNeighborTableSet->setData[item_index].data.twoHopNeighborAddress);
     return true;
   } else {
@@ -360,7 +359,7 @@ static bool twoHopNeighborTableSetFree(Two_Hop_Neighbor_Table_Set_t *twoHopNeigh
             twoHopNeighborTableSet->freeQueueEntry;
         twoHopNeighborTableSet->freeQueueEntry = item_index;
         twoHopNeighborTableSet->size = twoHopNeighborTableSet->size - 1;
-        neighborRecordClose(&twoHopNeighborRecord,
+        neighborBitMapClear(&twoHopNeighborBitMap,
                             twoHopNeighborTableSet->setData[item_index].data.twoHopNeighborAddress);
         return true;
       }
@@ -371,7 +370,7 @@ static bool twoHopNeighborTableSetFree(Two_Hop_Neighbor_Table_Set_t *twoHopNeigh
 }
 
 void twoHopNeighborTableSetInit(Two_Hop_Neighbor_Table_Set_t *twoHopNeighborTableSet) {
-  twoHopNeighborRecord = 0;
+  twoHopNeighborBitMap = 0;
 
   set_index_t i;
   for (i = 0; i < TWO_HOP_NEIGHBOR_TABLE_SIZE - 1; i++) {
@@ -389,24 +388,29 @@ set_index_t twoHopNeighborTableSetInsert(Two_Hop_Neighbor_Table_Set_t *twoHopNei
   if (candidate != -1) {
     memcpy(&twoHopNeighborTableSet->setData[candidate].data, twoHopNeighborTable,
            sizeof(Two_Hop_Neighbor_Table_t));
-    neighborRecordOpen(&twoHopNeighborRecord, twoHopNeighborTable->twoHopNeighborAddress);
+    neighborBitMapSet(&twoHopNeighborBitMap, twoHopNeighborTable->twoHopNeighborAddress);
     twoHopNeighborTableSet->size++;
   }
   return candidate;
 }
 
-set_index_t findInTwoHopNeighborTableSet(Two_Hop_Neighbor_Table_Set_t *twoHopNeighborTableSet,
+void findAndInsertInTwoHopNeighborTableSet(Two_Hop_Neighbor_Table_Set_t *twoHopNeighborTableSet,
                                   uint16_t oneHopAddress, uint16_t twoHopAddress) {
   set_index_t iter = twoHopNeighborTableSet->fullQueueEntry;
   while (iter != -1) {
     Two_Hop_Neighbor_Table_Set_Item_t cur = twoHopNeighborTableSet->setData[iter];
     if (cur.data.oneHopNeighborAddress == oneHopAddress &&
         cur.data.twoHopNeighborAddress == twoHopAddress) {
+      Two_Hop_Neighbor_Table_t twoHoptable;
+      twoHopNeighborTableInit(&twoHoptable, oneHopAddress, twoHopAddress);
+      set_index_t index = twoHopNeighborTableSetInsert(&twoHopNeighborTableSet, &twoHoptable);
+      if(index == -1) {
+        DEBUG_PRINT("Malloc failed, find and insert failed\n");
+      }
       break;
     }
     iter = cur.next;
   }
-  return iter;
 }
 
 bool twoHopNeighborTableSetClearExpire(Two_Hop_Neighbor_Table_Set_t *twoHopNeighborTableSet) {
@@ -428,24 +432,24 @@ bool twoHopNeighborTableSetClearExpire(Two_Hop_Neighbor_Table_Set_t *twoHopNeigh
 }
 
 /* MPR Selector Set Operations */
-void mPRSelectorSetInit(MPR_Selector_Set_t *mPRSelectorSet) {
-  mPRSelectorSet->mPRSelectorRecord = 0;
-  memset(mPRSelectorSet->expirationTimeSet, 0, sizeof(Time_t) * MPR_NEIGHBOR_SIZE);
+void MPRSelectorSetInit(MPR_Selector_Set_t *MPRSelectorSet) {
+  MPRSelectorSet->MPRSelectorRecord = 0;
+  memset(MPRSelectorSet->expirationTimeSet, 0, sizeof(Time_t) * MPR_NEIGHBOR_SIZE);
 }
 
-void mPRSelectorSetInsert(MPR_Selector_Set_t *mPRSelectorSet, uint16_t mPRSelectorAddress) {
-  Neighbor_Record_t *mPRSelectorRecord = &mPRSelectorSet->mPRSelectorRecord;
-  neighborRecordOpen(mPRSelectorRecord, mPRSelectorAddress);
-  mPRSelectorSet->expirationTimeSet[mPRSelectorAddress] = xTaskGetTickCount() + M2T(MPR_NEIGHBOR_HOLD_TIME);
+void MPRSelectorSetInsert(MPR_Selector_Set_t *MPRSelectorSet, uint16_t MPRSelectorAddress) {
+  Neighbor_Bit_Map_t *MPRSelectorRecord = &MPRSelectorSet->MPRSelectorRecord;
+  neighborBitMapSet(MPRSelectorRecord, MPRSelectorAddress);
+  MPRSelectorSet->expirationTimeSet[MPRSelectorAddress] = xTaskGetTickCount() + M2T(MPR_NEIGHBOR_HOLD_TIME);
 }
 
-void mPRSelectorSetClearExpire(MPR_Selector_Set_t *mPRSelectorSet) {
+void MPRSelectorSetClearExpire(MPR_Selector_Set_t *MPRSelectorSet) {
   Time_t now = xTaskGetTickCount();
   for(int index = 0; index < MPR_NEIGHBOR_SIZE; index++){
-    if(mPRSelectorSet->expirationTimeSet[index] < now) {
-      Neighbor_Record_t *mPRSelectorRecord = &mPRSelectorSet->mPRSelectorRecord;
-      neighborRecordClose(mPRSelectorRecord, index);
-      mPRSelectorSet->expirationTimeSet[index] = 0;
+    if(MPRSelectorSet->expirationTimeSet[index] < now) {
+      Neighbor_Bit_Map_t *MPRSelectorRecord = &MPRSelectorSet->MPRSelectorRecord;
+      neighborBitMapClear(MPRSelectorRecord, index);
+      MPRSelectorSet->expirationTimeSet[index] = 0;
     }
   }
 }

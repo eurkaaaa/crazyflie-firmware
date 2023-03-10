@@ -26,16 +26,16 @@ int generateRangingMessage(Ranging_Message_t *rangingMessage);
 int16_t getDistance(uint16_t neighborAddress);
 void setDistance(uint16_t neighborAddress, int16_t distance);
 
-/* Neighbor Record */
-Neighbor_Record_t rangingNeighborRecord;
-Neighbor_Record_t twoHopNeighborRecord;
-Neighbor_Record_t mPRNeighborRecord;
+/* Neighbor Bit Map */
+Neighbor_Bit_Map_t rangingNeighborBitMap;
+Neighbor_Bit_Map_t twoHopNeighborBitMap;
+Neighbor_Bit_Map_t MPRNeighborBitMap;
 
 /* Two Hop Neighbor Operations */
 void populateTwoHopNeighborSet(Ranging_Message_With_Timestamp_t *rangingMessageWithTimestamp);
 
 /* MPR Operations */
-void populateMPRSet();
+Neighbor_Bit_Map_t populateMPRSet(Neighbor_Bit_Map_t twoHopBitMap);
 
 /* MPR Selector Operations */
 void populateMPRSelectorSet(Ranging_Message_With_Timestamp_t *rangingMessageWithTimestamp);

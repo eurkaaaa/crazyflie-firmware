@@ -42,7 +42,7 @@ typedef struct {
   uint16_t msgLength; // 2 byte
   uint16_t filter; // 16 bits bloom filter
   // ADD: MPR record
-  uint64_t mPRNeighborRecord; // 8 byte
+  uint64_t MPRNeighborBitMap; // 8 byte
 } __attribute__((packed)) Ranging_Message_Header_t; // 20 byte => 28 byte
 
 /* Ranging Message */
@@ -149,13 +149,13 @@ void printRangingTableSet(Ranging_Table_Set_t *rangingTableSet);
 void printRangingMessage(Ranging_Message_t *rangingMessage);
 
 /* Neighbor Record Set */
-typedef uint64_t Neighbor_Record_t;
+typedef uint64_t Neighbor_Bit_Map_t;
 
 /* Neighbor Record Set Operations */
-void neighborRecordOpen(Neighbor_Record_t *neighborRecord,
+void neighborBitMapSet(Neighbor_Bit_Map_t *neighborBitMap,
                                uint16_t address);
 
-void neighborRecordClose(Neighbor_Record_t *neighborRecord,
+void neighborBitMapClear(Neighbor_Bit_Map_t *neighborBitMap,
                                 uint16_t address);
 
 /* Two Hop Neighbor Set */
@@ -187,23 +187,22 @@ void twoHopNeighborTableSetInit(Two_Hop_Neighbor_Table_Set_t *twoHopNeighborTabl
 set_index_t twoHopNeighborTableSetInsert(Two_Hop_Neighbor_Table_Set_t *twoHopNeighborTableSet,
                                   Two_Hop_Neighbor_Table_t *twoHopNeighborTable);
 
-set_index_t findInTwoHopNeighborTableSet(Two_Hop_Neighbor_Table_Set_t *twoHopNeighborTableSet,
+void findAndInsertInTwoHopNeighborTableSet(Two_Hop_Neighbor_Table_Set_t *twoHopNeighborTableSet,
                                   uint16_t oneHopAddress, uint16_t twoHopAddress);
 
 bool twoHopNeighborTableSetClearExpire(Two_Hop_Neighbor_Table_Set_t *twoHopNeighborTableSet);
 
-// TODO: Add next data structure
 /* MPR Selector Set */
 typedef struct {
-  Neighbor_Record_t mPRSelectorRecord;
+  Neighbor_Bit_Map_t MPRSelectorRecord;
   Time_t expirationTimeSet[MPR_NEIGHBOR_SIZE];
 } MPR_Selector_Set_t;
 
 /* MPR Selector Set Operations */
-void mPRSelectorSetInit(MPR_Selector_Set_t *mPRSelectorSet);
+void MPRSelectorSetInit(MPR_Selector_Set_t *MPRSelectorSet);
 
-void mPRSelectorSetInsert(MPR_Selector_Set_t *mPRSelectorSet, uint16_t mPRSelectorAddress);
+void MPRSelectorSetInsert(MPR_Selector_Set_t *MPRSelectorSet, uint16_t MPRSelectorAddress);
 
-void mPRSelectorSetClearExpire(MPR_Selector_Set_t *mPRSelectorSet);
+void MPRSelectorSetClearExpire(MPR_Selector_Set_t *MPRSelectorSet);
 
 #endif
