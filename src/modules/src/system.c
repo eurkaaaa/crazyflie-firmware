@@ -106,7 +106,7 @@ void systemLaunch(void)
 // This must be the first module to be initialized!
 void systemInit(void)
 {
-  if(isInit)
+  if (isInit)
     return;
 
   canStartMutex = xSemaphoreCreateMutexStatic(&canStartMutexBuffer);
@@ -123,15 +123,18 @@ void systemInit(void)
   DEBUG_PRINT("----------------------------\n");
   DEBUG_PRINT("%s is up and running!\n", platformConfigGetDeviceTypeName());
 
-  if (V_PRODUCTION_RELEASE) {
+  if (V_PRODUCTION_RELEASE)
+  {
     DEBUG_PRINT("Production release %s\n", V_STAG);
-  } else {
+  }
+  else
+  {
     DEBUG_PRINT("Build %s:%s (%s) %s\n", V_SLOCAL_REVISION,
-                V_SREVISION, V_STAG, (V_MODIFIED)?"MODIFIED":"CLEAN");
+                V_SREVISION, V_STAG, (V_MODIFIED) ? "MODIFIED" : "CLEAN");
   }
   DEBUG_PRINT("I am 0x%08X%08X%08X and I have %dKB of flash!\n",
-              *((int*)(MCU_ID_ADDRESS+8)), *((int*)(MCU_ID_ADDRESS+4)),
-              *((int*)(MCU_ID_ADDRESS+0)), *((short*)(MCU_FLASH_SIZE_ADDRESS)));
+              *((int *)(MCU_ID_ADDRESS + 8)), *((int *)(MCU_ID_ADDRESS + 4)),
+              *((int *)(MCU_ID_ADDRESS + 0)), *((short *)(MCU_FLASH_SIZE_ADDRESS)));
 
   configblockInit();
   storageInit();
@@ -151,7 +154,7 @@ void systemInit(void)
 
 bool systemTest()
 {
-  bool pass=isInit;
+  bool pass = isInit;
 
   pass &= ledseqTest();
   pass &= pmTest();
@@ -182,20 +185,23 @@ void systemTask(void *arg)
   i2cdevInit(I2C1_DEV);
   passthroughInit();
 
-  //Init the high-levels modules
+  // Init the high-levels modules
   systemInit();
   commInit();
   commanderInit();
 
   StateEstimatorType estimator = anyEstimator;
 
-  #ifdef CONFIG_ESTIMATOR_KALMAN_ENABLE
+#ifdef CONFIG_ESTIMATOR_KALMAN_ENABLE
   estimatorKalmanTaskInit();
-  #endif
+#endif
 
   deckInit();
   estimator = deckGetRequiredEstimator();
   stabilizerInit(estimator);
+  /*自己添加*/
+  // relativeLocoInit();
+  /*自己添加*/
   if (deckGetRequiredLowInterferenceRadioMode() && platformConfigPhysicalLayoutAntennasAreClose())
   {
     platformSetLowInterferenceRadioMode();
@@ -209,67 +215,80 @@ void systemTask(void *arg)
 
   systemRequestNRFVersion();
 
-  //Test the modules
+  // Test the modules
   DEBUG_PRINT("About to run tests in system.c.\n");
-  if (systemTest() == false) {
+  if (systemTest() == false)
+  {
     pass = false;
     DEBUG_PRINT("system [FAIL]\n");
   }
-  if (configblockTest() == false) {
+  if (configblockTest() == false)
+  {
     pass = false;
     DEBUG_PRINT("configblock [FAIL]\n");
   }
-  if (storageTest() == false) {
+  if (storageTest() == false)
+  {
     pass = false;
     DEBUG_PRINT("storage [FAIL]\n");
   }
-  if (commTest() == false) {
+  if (commTest() == false)
+  {
     pass = false;
     DEBUG_PRINT("comm [FAIL]\n");
   }
-  if (commanderTest() == false) {
+  if (commanderTest() == false)
+  {
     pass = false;
     DEBUG_PRINT("commander [FAIL]\n");
   }
-  if (stabilizerTest() == false) {
+  if (stabilizerTest() == false)
+  {
     pass = false;
     DEBUG_PRINT("stabilizer [FAIL]\n");
   }
 
-  #ifdef CONFIG_ESTIMATOR_KALMAN_ENABLE
-  if (estimatorKalmanTaskTest() == false) {
+#ifdef CONFIG_ESTIMATOR_KALMAN_ENABLE
+  if (estimatorKalmanTaskTest() == false)
+  {
     pass = false;
     DEBUG_PRINT("estimatorKalmanTask [FAIL]\n");
   }
-  #endif
+#endif
 
-  if (deckTest() == false) {
+  if (deckTest() == false)
+  {
     pass = false;
     DEBUG_PRINT("deck [FAIL]\n");
   }
-  if (soundTest() == false) {
+  if (soundTest() == false)
+  {
     pass = false;
     DEBUG_PRINT("sound [FAIL]\n");
   }
-  if (memTest() == false) {
+  if (memTest() == false)
+  {
     pass = false;
     DEBUG_PRINT("mem [FAIL]\n");
   }
-  if (watchdogNormalStartTest() == false) {
+  if (watchdogNormalStartTest() == false)
+  {
     pass = false;
     DEBUG_PRINT("watchdogNormalStart [FAIL]\n");
   }
-  if (cfAssertNormalStartTest() == false) {
+  if (cfAssertNormalStartTest() == false)
+  {
     pass = false;
     DEBUG_PRINT("cfAssertNormalStart [FAIL]\n");
   }
-  if (peerLocalizationTest() == false) {
+  if (peerLocalizationTest() == false)
+  {
     pass = false;
     DEBUG_PRINT("peerLocalization [FAIL]\n");
   }
 
-  //Start the firmware
-  if(pass)
+  // Start the firmware
+  if (pass)
   {
     DEBUG_PRINT("Self test passed!\n");
     selftestPassed = 1;
@@ -283,14 +302,14 @@ void systemTask(void *arg)
     selftestPassed = 0;
     if (systemTest())
     {
-      while(1)
+      while (1)
       {
         ledseqRun(&seq_testFailed);
         vTaskDelay(M2T(2000));
         // System can be forced to start by setting the param to 1 from the cfclient
         if (selftestPassed)
         {
-	        DEBUG_PRINT("Start forced.\n");
+          DEBUG_PRINT("Start forced.\n");
           systemStart();
           break;
         }
@@ -306,11 +325,10 @@ void systemTask(void *arg)
 
   workerLoop();
 
-  //Should never reach this point!
-  while(1)
+  // Should never reach this point!
+  while (1)
     vTaskDelay(portMAX_DELAY);
 }
-
 
 /* Global system variables */
 void systemStart()
@@ -323,9 +341,9 @@ void systemStart()
 
 void systemWaitStart(void)
 {
-  //This permits to guarantee that the system task is initialized before other
-  //tasks waits for the start event.
-  while(!isInit)
+  // This permits to guarantee that the system task is initialized before other
+  // tasks waits for the start event.
+  while (!isInit)
     vTaskDelay(2);
 
   xSemaphoreTake(canStartMutex, portMAX_DELAY);
@@ -367,15 +385,16 @@ void systemSyslinkReceive(SyslinkPacket *slp)
   {
     size_t len = slp->length - 1;
 
-    if (sizeof(nrf_version) - 1 <=  len) {
+    if (sizeof(nrf_version) - 1 <= len)
+    {
       len = sizeof(nrf_version) - 1;
     }
-    memcpy(&nrf_version, &slp->data[0], len );
+    memcpy(&nrf_version, &slp->data[0], len);
     DEBUG_PRINT("NRF51 version: %s\n", nrf_version);
   }
 }
 
-void vApplicationIdleHook( void )
+void vApplicationIdleHook(void)
 {
   static uint32_t tickOfLatestWatchdogReset = M2T(0);
 
@@ -387,7 +406,8 @@ void vApplicationIdleHook( void )
     watchdogReset();
   }
 
-  if (dumpAssertInfo != 0) {
+  if (dumpAssertInfo != 0)
+  {
     printAssertSnapshotData();
     dumpAssertInfo = 0;
   }
@@ -395,7 +415,9 @@ void vApplicationIdleHook( void )
   // Enter sleep mode. Does not work when debugging chip with SWD.
   // Currently saves about 20mA STM32F405 current consumption (~30%).
 #ifndef DEBUG
-  { __asm volatile ("wfi"); }
+  {
+    __asm volatile("wfi");
+  }
 #endif
 }
 
@@ -415,17 +437,17 @@ PARAM_ADD_CORE(PARAM_UINT16 | PARAM_RONLY, flash, MCU_FLASH_SIZE_ADDRESS)
 /**
  * @brief Byte `0 - 3` of device unique id
  */
-PARAM_ADD_CORE(PARAM_UINT32 | PARAM_RONLY, id0, MCU_ID_ADDRESS+0)
+PARAM_ADD_CORE(PARAM_UINT32 | PARAM_RONLY, id0, MCU_ID_ADDRESS + 0)
 
 /**
  * @brief Byte `4 - 7` of device unique id
  */
-PARAM_ADD_CORE(PARAM_UINT32 | PARAM_RONLY, id1, MCU_ID_ADDRESS+4)
+PARAM_ADD_CORE(PARAM_UINT32 | PARAM_RONLY, id1, MCU_ID_ADDRESS + 4)
 
 /**
  * @brief Byte `8 - 11` of device unique id
  */
-PARAM_ADD_CORE(PARAM_UINT32 | PARAM_RONLY, id2, MCU_ID_ADDRESS+8)
+PARAM_ADD_CORE(PARAM_UINT32 | PARAM_RONLY, id2, MCU_ID_ADDRESS + 8)
 
 PARAM_GROUP_STOP(cpu)
 
