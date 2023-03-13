@@ -99,9 +99,9 @@ bool getNeighborStateInfo(uint16_t neighborAddress, uint16_t *distance, short *v
   }
 }
 
-bool getOrSetKeepflying(uint16_t RobIDfromControl, bool keep_flying)
+bool getOrSetKeepflying(uint16_t uwbAddress, bool keep_flying)
 {
-  if (RobIDfromControl == 1)
+  if (uwbAddress == 1)
   {
     my_keep_flying = keep_flying;
     return keep_flying;
