@@ -148,10 +148,10 @@ void printRangingTableSet(Ranging_Table_Set_t *rangingTableSet);
 
 void printRangingMessage(Ranging_Message_t *rangingMessage);
 
-/* Neighbor Record Set */
+/* Neighbor Bit Map Set */
 typedef uint64_t Neighbor_Bit_Map_t;
 
-/* Neighbor Record Set Operations */
+/* Neighbor Bit Map Set Operations */
 void neighborBitMapSet(Neighbor_Bit_Map_t *neighborBitMap,
                                uint16_t address);
 
@@ -194,7 +194,7 @@ bool twoHopNeighborTableSetClearExpire(Two_Hop_Neighbor_Table_Set_t *twoHopNeigh
 
 /* MPR Selector Set */
 typedef struct {
-  Neighbor_Bit_Map_t MPRSelectorRecord;
+  Neighbor_Bit_Map_t MPRSelectorBitMap;
   Time_t expirationTimeSet[MPR_NEIGHBOR_SIZE];
 } MPR_Selector_Set_t;
 
