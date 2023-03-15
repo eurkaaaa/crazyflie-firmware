@@ -32,15 +32,17 @@ typedef struct
 /* Ranging Message Header*/
 typedef struct
 {
-  uint16_t srcAddress;                              // 2 byte
-  uint16_t msgSequence;                             // 2 byte
-  Timestamp_Tuple_t lastTxTimestamp;                // 10 byte
-  short velocity;                                   // 2 byte cm/s
-  short velocityXInWorld;                           // 2 byte cm/s 在世界坐标系下的速度（不是基于机体坐标系的速度）
-  short velocityYInWorld;                           // 2 byte cm/s 在世界坐标系下的速度（不是基于机体坐标系的速度）
-  float gyroZ;                                      // 4 byte rad/s
-  uint16_t positionZ;                               // 2 byte cm/s
-  bool keep_flying;                                 // 无人机的飞行状态
+  uint16_t srcAddress;               // 2 byte
+  uint16_t msgSequence;              // 2 byte
+  Timestamp_Tuple_t lastTxTimestamp; // 10 byte
+  short velocity;                    // 2 byte cm/s
+  /*--1添加--*/
+  short velocityXInWorld; // 2 byte cm/s 在世界坐标系下的速度（不是基于机体坐标系的速度）
+  short velocityYInWorld; // 2 byte cm/s 在世界坐标系下的速度（不是基于机体坐标系的速度）
+  float gyroZ;            // 4 byte rad/s
+  uint16_t positionZ;     // 2 byte cm/s
+  bool keep_flying;       // 无人机的飞行状态
+  /*--1添加--*/
   uint16_t msgLength;                               // 2 byte
   uint16_t filter;                                  // 16 bits bloom filter
 } __attribute__((packed)) Ranging_Message_Header_t; // 20 byte
@@ -155,9 +157,5 @@ void printRangingTable(Ranging_Table_t *rangingTable);
 void printRangingTableSet(Ranging_Table_Set_t *rangingTableSet);
 
 void printRangingMessage(Ranging_Message_t *rangingMessage);
-
-/*---自己添加---start---*/
-
-/*---自己添加---end---*/
 
 #endif

@@ -16,10 +16,10 @@
 #include "estimator_kalman.h"
 
 static uint16_t MY_UWB_ADDRESS;
-
+/*--5添加--*/
 static SemaphoreHandle_t rangingTableSetMutex;            // 用于互斥访问rangingTableSet
 static median_data_t median_data[RANGING_TABLE_SIZE + 1]; // 存储测距的历史值
-
+/*--5添加--*/
 static QueueHandle_t rxQueue;
 static Ranging_Table_Set_t rangingTableSet;
 static UWB_Message_Listener_t listener;
@@ -29,12 +29,14 @@ static TaskHandle_t uwbRangingRxTaskHandle = 0;
 static Timestamp_Tuple_t TfBuffer[Tf_BUFFER_POOL_SIZE] = {0};
 static int TfBufferIndex = 0;
 static int rangingSeqNumber = 1;
-
+/*--6添加--*/
 static logVarId_t idVelocityX, idVelocityY, idVelocityZ;
+/*--6添加--*/
 static float velocity;
 
 int16_t distanceTowards[RANGING_TABLE_SIZE + 1] = {[0 ... RANGING_TABLE_SIZE] = -1};
 
+/*--4添加--*/
 static neighborStateInfo_t neighborStateInfo; // 邻居的状态信息
 static bool my_keep_flying;                   // 当前无人机的keep_flying
 
@@ -114,6 +116,7 @@ bool getOrSetKeepflying(uint16_t uwbAddress, bool keep_flying)
 
 void getCurrentNeighborAddressInfo_t(currentNeighborAddressInfo_t *currentNeighborAddressInfo)
 {
+  /*--11添加--*/
   xSemaphoreTake(rangingTableSetMutex, portMAX_DELAY);
   currentNeighborAddressInfo->size = 0;
   int i = 0;
@@ -127,6 +130,7 @@ void getCurrentNeighborAddressInfo_t(currentNeighborAddressInfo_t *currentNeighb
     iter = cur.next;
   }
   xSemaphoreGive(rangingTableSetMutex);
+  /*--11添加--*/
 }
 
 static int16_t median_filter_3(int16_t *data)
@@ -148,7 +152,7 @@ static int16_t median_filter_3(int16_t *data)
 }
 #define ABS(a) ((a) > 0 ? (a) : -(a))
 
-/*---自己添加---*/
+/*--4添加--*/
 
 void rangingRxCallback(void *parameters)
 {
@@ -207,7 +211,9 @@ static void uwbRangingTxTask(void *parameters)
     int msgLen = generateRangingMessage((Ranging_Message_t *)&txPacketCache.payload);
     txPacketCache.header.length = sizeof(Packet_Header_t) + msgLen;
     uwbSendPacketBlock(&txPacketCache);
+    /*--13添加--*/
     vTaskDelay(TX_PERIOD_IN_MS + rand() % 15);
+    /*--13添加--*/
   }
 }
 
@@ -231,9 +237,11 @@ void rangingInit()
 {
   MY_UWB_ADDRESS = getUWBAddress();
   DEBUG_PRINT("MY_UWB_ADDRESS = %d \n", MY_UWB_ADDRESS);
+  /*--12添加--*/
   initNeighborStateInfoAndMedian_data();
   rxQueue = xQueueCreate(RANGING_RX_QUEUE_SIZE, RANGING_RX_QUEUE_ITEM_SIZE);
   rangingTableSetMutex = xSemaphoreCreateMutex();
+  /*--12添加--*/
   rangingTableSetInit(&rangingTableSet);
 
   listener.type = RANGING;
@@ -266,7 +274,7 @@ int16_t computeDistance(uint16_t neighborAddress, Timestamp_Tuple_t Tp, Timestam
   diff2 = tRound2 - tReply2;
   tprop_ctn = (diff1 * tReply2 + diff2 * tReply1 + diff2 * diff1) / (tRound1 + tRound2 + tReply1 + tReply2);
   int16_t calcDist = (int16_t)tprop_ctn * 0.4691763978616;
-
+  /*--7添加--*/
   /*这里暂时采用和李树帅twr中一样的形式*/
   if (calcDist > 0 && calcDist < 1000)
   {
@@ -289,6 +297,7 @@ int16_t computeDistance(uint16_t neighborAddress, Timestamp_Tuple_t Tp, Timestam
     }
   }
   return 0;
+  /*--7添加--*/
 
   // bool isErrorOccurred = false;
   // if (calcDist > 1000 || calcDist < 0)
@@ -317,8 +326,10 @@ void processRangingMessage(Ranging_Message_With_Timestamp_t *rangingMessageWithT
   uint16_t neighborAddress = rangingMessage->header.srcAddress;
   set_index_t neighborIndex = findInRangingTableSet(&rangingTableSet, neighborAddress);
 
+  /*--8添加--*/
   bool isNewAddNeighbor = neighborIndex == -1 ? true : false; /*如果是新添加的邻居，则是true*/
   setNeighborStateInfo_isNewAdd(neighborAddress, isNewAddNeighbor);
+  /*--8添加--*/
 
   // DEBUG_PRINT("processRangingMessage:%d\n", isNewAddNeighbor);
   /* handle new neighbor */
@@ -331,9 +342,11 @@ void processRangingMessage(Ranging_Message_With_Timestamp_t *rangingMessageWithT
     }
     Ranging_Table_t table;
     rangingTableInit(&table, neighborAddress);
+    /*--10添加--*/
     xSemaphoreTake(rangingTableSetMutex, portMAX_DELAY);
     neighborIndex = rangingTableSetInsert(&rangingTableSet, &table);
     xSemaphoreGive(rangingTableSetMutex);
+    /*--10添加--*/
   }
 
   Ranging_Table_t *neighborRangingTable = &rangingTableSet.setData[neighborIndex].data;
@@ -395,8 +408,9 @@ void processRangingMessage(Ranging_Message_With_Timestamp_t *rangingMessageWithT
       {
         neighborRangingTable->distance = distance;
         setDistance(neighborRangingTable->neighborAddress, distance);
-
+        /*--9添加--*/
         setNeighborStateInfo(neighborAddress, distance, &rangingMessage->header);
+        /*--9添加--*/
       }
       else
       {
@@ -422,6 +436,7 @@ void processRangingMessage(Ranging_Message_With_Timestamp_t *rangingMessageWithT
 
 int generateRangingMessage(Ranging_Message_t *rangingMessage)
 {
+  /*--9添加--*/
   xSemaphoreTake(rangingTableSetMutex, portMAX_DELAY);
 #ifdef ENABLE_BUS_BOARDING_SCHEME
   sortRangingTableSet(&rangingTableSet);
@@ -468,6 +483,7 @@ int generateRangingMessage(Ranging_Message_t *rangingMessage)
   estimatorKalmanGetSwarmInfo(&rangingMessage->header.velocityXInWorld, &rangingMessage->header.velocityYInWorld, &rangingMessage->header.gyroZ, &rangingMessage->header.positionZ);
   rangingMessage->header.keep_flying = my_keep_flying;
 
+  /*--9添加--*/
   return rangingMessage->header.msgLength;
 }
 
