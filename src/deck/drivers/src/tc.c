@@ -28,7 +28,7 @@ static int tcSeqNumber = 1;
 uint16_t tcCheckTable[TC_CHECK_TABLE_SIZE] = {0};
 
 MprSelectorSet_t ms;
-
+//buzhidaoxingbuxing
 void tcRxCallback(void *parameters) {
   DEBUG_PRINT("tcRxCallback \n");
 }
