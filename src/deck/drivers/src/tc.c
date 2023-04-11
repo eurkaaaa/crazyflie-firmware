@@ -123,7 +123,7 @@ void processTcMessage(Tc_Message_t *tcMessage) {
       sizeof(Tc_Message_Header_t)) / sizeof(Tc_Body_Unit_t);
   for (int8_t bodyUnitNumber = 0; bodyUnitNumber < bodyUnitNumberMax; bodyUnitNumber++) {
     Tc_Body_Unit_t *bodyUnit = &tcMessage->bodyUnits[bodyUnitNumber];
-    // 更新获取到的拓扑信息，维护本地拓扑表
+    // 更新获取到的拓扑信息，用于维护本地拓扑表
     floodingTopologyTableSetUpdate(&floodingTopologyTableSet, tcMessage->header.srcAddress,
                                    bodyUnit->dstAddress, bodyUnit->distance);
   }
