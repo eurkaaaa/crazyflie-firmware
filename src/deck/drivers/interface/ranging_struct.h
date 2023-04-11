@@ -12,6 +12,12 @@
 #define RANGING_TABLE_SIZE 60
 #define RANGING_TABLE_HOLD_TIME 10000
 
+#define TWO_HOP_NEIGHBOR_TABLE_SIZE 60
+#define TWO_HOP_NEIGHBOR_TABLE_HOLD_TIME 10000
+
+#define MPR_NEIGHBOR_SIZE 60
+#define MPR_NEIGHBOR_HOLD_TIME 10000
+
 typedef portTickType Time_t;
 typedef short set_index_t;
 
@@ -35,7 +41,9 @@ typedef struct {
   short velocity; // 2 byte cm/s
   uint16_t msgLength; // 2 byte
   uint16_t filter; // 16 bits bloom filter
-} __attribute__((packed)) Ranging_Message_Header_t; // 20 byte
+  // ADD: MPR record
+  uint64_t MPRNeighborBitMap; // 8 byte
+} __attribute__((packed)) Ranging_Message_Header_t; // 20 byte => 28 byte
 
 /* Ranging Message */
 typedef struct {
@@ -118,7 +126,7 @@ typedef struct {
   int size;
 } Ranging_Table_Set_t;
 
-/*Ranging Table Set Operations*/
+/* Ranging Table Set Operations */
 void rangingTableSetInit(Ranging_Table_Set_t *rangingTableSet);
 
 set_index_t rangingTableSetInsert(Ranging_Table_Set_t *rangingTableSet,
@@ -139,5 +147,62 @@ void printRangingTable(Ranging_Table_t *rangingTable);
 void printRangingTableSet(Ranging_Table_Set_t *rangingTableSet);
 
 void printRangingMessage(Ranging_Message_t *rangingMessage);
+
+/* Neighbor Bit Map Set */
+typedef uint64_t Neighbor_Bit_Map_t;
+
+/* Neighbor Bit Map Set Operations */
+void neighborBitMapSet(Neighbor_Bit_Map_t *neighborBitMap,
+                               uint16_t address);
+
+void neighborBitMapClear(Neighbor_Bit_Map_t *neighborBitMap,
+                                uint16_t address);
+
+/* Two Hop Neighbor Set */
+typedef struct {
+  uint16_t oneHopNeighborAddress;
+  uint16_t twoHopNeighborAddress;
+  Time_t expirationTime;
+} __attribute__((packed)) Two_Hop_Neighbor_Table_t;
+
+/* Two Hop Neighbor Table Operations */
+void twoHopNeighborTableInit(Two_Hop_Neighbor_Table_t *twoHopNeighborTable,
+                             uint16_t oneHopAddress, uint16_t twoHopAddress);
+
+typedef struct {
+  set_index_t next;
+  Two_Hop_Neighbor_Table_t data;
+} __attribute__((packed)) Two_Hop_Neighbor_Table_Set_Item_t;
+
+typedef struct {
+  Two_Hop_Neighbor_Table_Set_Item_t setData[TWO_HOP_NEIGHBOR_TABLE_SIZE];
+  set_index_t freeQueueEntry;
+  set_index_t fullQueueEntry;
+  int size;
+} Two_Hop_Neighbor_Table_Set_t;
+
+/* Two Hot Neighbor Set Operations */
+void twoHopNeighborTableSetInit(Two_Hop_Neighbor_Table_Set_t *twoHopNeighborTableSet);
+
+set_index_t twoHopNeighborTableSetInsert(Two_Hop_Neighbor_Table_Set_t *twoHopNeighborTableSet,
+                                  Two_Hop_Neighbor_Table_t *twoHopNeighborTable);
+
+void findAndInsertInTwoHopNeighborTableSet(Two_Hop_Neighbor_Table_Set_t *twoHopNeighborTableSet,
+                                  uint16_t oneHopAddress, uint16_t twoHopAddress);
+
+bool twoHopNeighborTableSetClearExpire(Two_Hop_Neighbor_Table_Set_t *twoHopNeighborTableSet);
+
+/* MPR Selector Set */
+typedef struct {
+  Neighbor_Bit_Map_t MPRSelectorBitMap;
+  Time_t expirationTimeSet[MPR_NEIGHBOR_SIZE];
+} MPR_Selector_Set_t;
+
+/* MPR Selector Set Operations */
+void MPRSelectorSetInit(MPR_Selector_Set_t *MPRSelectorSet);
+
+void MPRSelectorSetInsert(MPR_Selector_Set_t *MPRSelectorSet, uint16_t MPRSelectorAddress);
+
+void MPRSelectorSetClearExpire(MPR_Selector_Set_t *MPRSelectorSet);
 
 #endif

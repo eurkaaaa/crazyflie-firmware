@@ -20,6 +20,7 @@ static uint16_t MY_UWB_ADDRESS;
 static QueueHandle_t rxQueue;
 static Flooding_Topology_Table_set_t floodingTopologyTableSet; 
 static UWB_Message_Listener_t listener;
+static MPR_Selector_Set_t MPRSelectorSet;
 static TaskHandle_t uwbTcTxTaskHandle = 0;
 static TaskHandle_t uwbTcRxTaskHandle = 0;
 
@@ -27,8 +28,6 @@ static int tcSeqNumber = 1;
 
 uint16_t tcCheckTable[TC_CHECK_TABLE_SIZE] = {0};
 
-MprSelectorSet_t ms;
-//buzhidaoxingbuxing
 void tcRxCallback(void *parameters) {
   DEBUG_PRINT("tcRxCallback \n");
 }
@@ -64,8 +63,10 @@ static void uwbTcRxTask(void *parameters) {
       Tc_Message_t *tcMessage = (Tc_Message_t *) &rxPacketCache.payload;
       if (checkTcMessage(tcMessage)) {
         processTcMessage(tcMessage);
-        if(MprSelectorSetFind(&ms, tcMessage->header.srcAddress) != -1)
-        {uwbSendPacketBlock(&rxPacketCache);}
+        // if(MprSelectorSetFind(&ms, tcMessage->header.srcAddress) != -1)
+        // {uwbSendPacketBlock(&rxPacketCache);}
+        if((MPRNeighborBitMap >> tcMessage->header.srcAddress) &= (uint64_t) 1)
+        uwbSendPacketBlock(&rxPacketCache);
       }
     }
   }
@@ -75,9 +76,6 @@ void tcInit() {
   MY_UWB_ADDRESS = getUWBAddress();
   rxQueue = xQueueCreate(TC_RX_QUEUE_SIZE, TC_RX_QUEUE_ITEM_SIZE);
   floodingTopologyTableSetInit(&floodingTopologyTableSet);
-  mprSelectorsetInit(&ms);
-  MprSelectorSetInsert(&ms,1);
-  printmprSelectorSet(&ms);
 
   listener.type = TC;
   listener.rxQueue = rxQueue;
@@ -92,18 +90,16 @@ void tcInit() {
 }
 
 int generateTcMessage(Tc_Message_t *tcMessage) {
-  floodingTopologyTableSetClearExpire(&floodingTopologyTableSet);//
-
+  floodingTopologyTableSetClearExpire(&floodingTopologyTableSet);//删除原有拓扑信息表
   int8_t bodyUnitNumber = 0;
   int curSeqNumber = tcSeqNumber;
-  /* generate message body */
+  /* 生成TC消息主干，将本地拓扑信息表放到TC报文中 */
   uint16_t addressIndex;
   for (addressIndex = 0; addressIndex < RANGING_TABLE_SIZE; addressIndex++) {
     if (bodyUnitNumber >= MAX_BODY_UNIT_NUMBER) {
       break;
     }
-    /* Use distance to judge whether neighbors exist. If the neighbor does not exist,
-       distance will be 0 */
+    /* 更新拓扑信息表 */
     int16_t distance = getDistance(addressIndex);
     if (distance >= 0) {
       tcMessage->bodyUnits[bodyUnitNumber].dstAddress = addressIndex;
@@ -113,15 +109,12 @@ int generateTcMessage(Tc_Message_t *tcMessage) {
       bodyUnitNumber++;
     }
   }
-  /* generate message header */
+  /* 生成TC消息头 */
   tcMessage->header.srcAddress = MY_UWB_ADDRESS;
   tcMessage->header.msgLength = sizeof(Tc_Message_Header_t) + sizeof(Tc_Body_Unit_t) * bodyUnitNumber;
   tcMessage->header.msgSequence = curSeqNumber;
   tcMessage->header.timeToLive = TC_TIME_TO_LIVE;
-
-  /* data update */
   tcSeqNumber++;
-
   return tcMessage->header.msgLength;
 }
 
@@ -130,6 +123,7 @@ void processTcMessage(Tc_Message_t *tcMessage) {
       sizeof(Tc_Message_Header_t)) / sizeof(Tc_Body_Unit_t);
   for (int8_t bodyUnitNumber = 0; bodyUnitNumber < bodyUnitNumberMax; bodyUnitNumber++) {
     Tc_Body_Unit_t *bodyUnit = &tcMessage->bodyUnits[bodyUnitNumber];
+    // 更新获取到的拓扑信息，维护本地拓扑表
     floodingTopologyTableSetUpdate(&floodingTopologyTableSet, tcMessage->header.srcAddress,
                                    bodyUnit->dstAddress, bodyUnit->distance);
   }

@@ -17,6 +17,8 @@ static uint16_t MY_UWB_ADDRESS;
 
 static QueueHandle_t rxQueue;
 static Ranging_Table_Set_t rangingTableSet;
+static Two_Hop_Neighbor_Table_Set_t twoHopNeighborTableSet;
+static MPR_Selector_Set_t MPRSelectorSet;
 static UWB_Message_Listener_t listener;
 static TaskHandle_t uwbRangingTxTaskHandle = 0;
 static TaskHandle_t uwbRangingRxTaskHandle = 0;
@@ -29,6 +31,16 @@ static logVarId_t idVelocityX, idVelocityY, idVelocityZ;
 static float velocity;
 
 int16_t distanceTowards[RANGING_TABLE_SIZE + 1] = {[0 ... RANGING_TABLE_SIZE] = -1};
+
+static bool checkAddress(uint16_t address) {
+  if(MY_UWB_ADDRESS == 1 && (address == 2 || address == 3)) return true;
+  if(MY_UWB_ADDRESS == 2 && (address == 1 || address == 5 || address == 6)) return true;
+  if(MY_UWB_ADDRESS == 3 && (address == 1 || address == 4 || address == 5)) return true;
+  if(MY_UWB_ADDRESS == 4 && address == 3) return true;
+  if(MY_UWB_ADDRESS == 5 && (address == 2 || address == 3)) return true;
+  if(MY_UWB_ADDRESS == 6 && address == 2) return true;
+  return false;
+}
 
 void rangingRxCallback(void *parameters) {
   // DEBUG_PRINT("rangingRxCallback \n");
@@ -44,7 +56,9 @@ void rangingRxCallback(void *parameters) {
   Ranging_Message_t *rangingMessage = (Ranging_Message_t *) packet->payload;
   rxMessageWithTimestamp.rangingMessage = *rangingMessage;
 
-  xQueueSendFromISR(rxQueue, &rxMessageWithTimestamp, &xHigherPriorityTaskWoken);
+  if(checkAddress(rangingMessage->header.srcAddress)){
+    xQueueSendFromISR(rxQueue, &rxMessageWithTimestamp, &xHigherPriorityTaskWoken);
+  }
 }
 
 void rangingTxCallback(void *parameters) {
@@ -92,8 +106,13 @@ static void uwbRangingRxTask(void *parameters) {
 
   while (true) {
     if (xQueueReceive(rxQueue, &rxPacketCache, portMAX_DELAY)) {
-//      DEBUG_PRINT("uwbRangingRxTask: received ranging message \n");
+      // DEBUG_PRINT("uwbRangingRxTask: received ranging message \n");
       processRangingMessage(&rxPacketCache);
+      // ADD: calculate MPR
+      populateTwoHopNeighborSet(&rxPacketCache);
+      MPRNeighborBitMap = populateMPRSet(twoHopNeighborBitMap);
+      populateMPRSelectorSet(&rxPacketCache);
+      DEBUG_PRINT("MPR RECORD: %llu \n", MPRNeighborBitMap);
     }
   }
 }
@@ -103,6 +122,12 @@ void rangingInit() {
   DEBUG_PRINT("MY_UWB_ADDRESS = %d \n", MY_UWB_ADDRESS);
   rxQueue = xQueueCreate(RANGING_RX_QUEUE_SIZE, RANGING_RX_QUEUE_ITEM_SIZE);
   rangingTableSetInit(&rangingTableSet);
+  // ADD: Two hop neighbor
+  twoHopNeighborTableSetInit(&twoHopNeighborTableSet);
+  // ADD: MPR
+  MPRNeighborBitMap = 0;
+  // ADD: MPR selector
+  MPRSelectorSetInit(&MPRSelectorSet);
 
   listener.type = RANGING;
   listener.rxQueue = NULL; // handle rxQueue in swarm_ranging.c instead of adhocdeck.c
@@ -271,6 +296,8 @@ int generateRangingMessage(Ranging_Message_t *rangingMessage) {
   rangingMessage->header.msgLength = sizeof(Ranging_Message_Header_t) + sizeof(Body_Unit_t) * bodyUnitNumber;
   rangingMessage->header.msgSequence = curSeqNumber;
   rangingMessage->header.lastTxTimestamp = TfBuffer[TfBufferIndex];
+  // ADD: MPR record
+  rangingMessage->header.MPRNeighborBitMap = MPRNeighborBitMap;
   float velocityX = logGetFloat(idVelocityX);
   float velocityY = logGetFloat(idVelocityY);
   float velocityZ = logGetFloat(idVelocityZ);
@@ -278,6 +305,120 @@ int generateRangingMessage(Ranging_Message_t *rangingMessage) {
   /* velocity in cm/s */
   rangingMessage->header.velocity = (short) (velocity * 100);
   return rangingMessage->header.msgLength;
+}
+
+void populateTwoHopNeighborSet(Ranging_Message_With_Timestamp_t *rangingMessageWithTimestamp) {
+  // expire two hop neighbor set
+  twoHopNeighborTableSetClearExpire(&twoHopNeighborTableSet);
+
+  Ranging_Message_t *rangingMessage = &rangingMessageWithTimestamp->rangingMessage;
+  uint16_t oneHopAddress = rangingMessage->header.srcAddress;
+  int8_t bodyUnitNumberMax = (rangingMessage->header.msgLength -
+                             sizeof(Ranging_Message_Header_t)) / sizeof(Body_Unit_t);
+  for(int8_t bodyUnitNumber = 0; bodyUnitNumber < bodyUnitNumberMax; bodyUnitNumber++) {
+    uint16_t twoHopAddress = rangingMessage->bodyUnits[bodyUnitNumber].address;
+    /* Two hop Neighbor judgment */
+    // two hop neighbor is myself
+    if (twoHopAddress == MY_UWB_ADDRESS) continue;
+    // one hop address is not in ranging table set
+    if ((((uint64_t)1 << oneHopAddress) & rangingNeighborBitMap) == 0) continue;
+    // two hop neighbor is one of my one hop neighbor
+    if (((twoHopNeighborBitMap | ((uint64_t)1 << twoHopAddress)) &
+        rangingNeighborBitMap) != 0) continue;
+    /* Insert two hop neighbor */
+    findAndInsertInTwoHopNeighborTableSet(&twoHopNeighborTableSet, oneHopAddress, twoHopAddress);
+  }
+}
+
+// Input: twoHopNeighborBitMap
+// Return: MPRNeighborBitMap
+Neighbor_Bit_Map_t populateMPRSet(Neighbor_Bit_Map_t twoHopBitMap) {
+  // 清空原有MPR集合
+  Neighbor_Bit_Map_t _MPRNeighborBitMap = 0;
+
+  Neighbor_Bit_Map_t coveredTwoHopNeighbor = 0;
+  uint8_t twoHopNeighborReachCount[TWO_HOP_NEIGHBOR_TABLE_SIZE] = {0};
+  /* 1 => 找到唯一可以到达二跳节点的一跳节点 */ 
+  // 计算每个两跳邻居的可到达路由的数量
+  for(set_index_t index = twoHopNeighborTableSet.fullQueueEntry; index != -1;
+      index = twoHopNeighborTableSet.setData[index].next) {
+    uint16_t twoHopAddress = twoHopNeighborTableSet.setData[index].data.twoHopNeighborAddress;
+    twoHopNeighborReachCount[twoHopAddress]++;
+  }
+  // 添加到MPR集合中
+  for(set_index_t index = twoHopNeighborTableSet.fullQueueEntry; index != -1;
+      index = twoHopNeighborTableSet.setData[index].next) {
+    uint16_t oneHopAddress = twoHopNeighborTableSet.setData[index].data.oneHopNeighborAddress;
+    uint16_t twoHopAddress = twoHopNeighborTableSet.setData[index].data.twoHopNeighborAddress;
+    if(twoHopNeighborReachCount[twoHopAddress] > 1) continue;
+    // add MPR neighbor
+    neighborBitMapSet(&_MPRNeighborBitMap, oneHopAddress);
+  }
+  // 计算剩余未被覆盖的二跳节点集合
+  for(set_index_t index = twoHopNeighborTableSet.fullQueueEntry; index != -1;
+      index = twoHopNeighborTableSet.setData[index].next) {
+    uint16_t oneHopAddress = twoHopNeighborTableSet.setData[index].data.oneHopNeighborAddress;
+    uint16_t twoHopAddress = twoHopNeighborTableSet.setData[index].data.twoHopNeighborAddress;
+    if((((uint64_t)1 << oneHopAddress) & _MPRNeighborBitMap) == 0) continue;
+    neighborBitMapSet(&coveredTwoHopNeighbor, twoHopAddress);
+  }
+  /* 2 => 计算能够最大限度地覆盖其余两个跳节点的一跳邻居 */
+  Neighbor_Bit_Map_t restTwoHopNeighbor = (~coveredTwoHopNeighbor) & twoHopBitMap;
+  while(restTwoHopNeighbor != 0){
+    uint8_t oneHopNeighborReachCapacity[RANGING_TABLE_SIZE] = {0};
+    int16_t bestOneHopNeighbor = -1;
+    uint8_t bestOneHopNeighborCapacity = 0;
+    // 计算一跳节点的二跳节点
+    for(set_index_t index = twoHopNeighborTableSet.fullQueueEntry; index != -1;
+        index = twoHopNeighborTableSet.setData[index].next) {
+      uint16_t oneHopAddress = twoHopNeighborTableSet.setData[index].data.oneHopNeighborAddress;
+      uint16_t twoHopAddress = twoHopNeighborTableSet.setData[index].data.twoHopNeighborAddress;
+      // 删除二跳节点不在剩余节点
+      if((((uint64_t)1 << twoHopAddress) & restTwoHopNeighbor) == 0) continue;
+      oneHopNeighborReachCapacity[oneHopAddress]++;
+    }
+    // 找到含有最多的剩余二跳节点的一跳节点
+    for(int address = 0; address < RANGING_TABLE_SIZE; address++) {
+      if(oneHopNeighborReachCapacity[address] > bestOneHopNeighborCapacity) {
+        bestOneHopNeighborCapacity = oneHopNeighborReachCapacity[address];
+        bestOneHopNeighbor = address;
+      }
+    }
+    // 将其添加到MPR集合中
+    neighborBitMapSet(&_MPRNeighborBitMap, bestOneHopNeighbor);
+    for(set_index_t index = twoHopNeighborTableSet.fullQueueEntry; index != -1;
+        index = twoHopNeighborTableSet.setData[index].next) {
+      uint16_t oneHopAddress = twoHopNeighborTableSet.setData[index].data.oneHopNeighborAddress;
+      uint16_t twoHopAddress = twoHopNeighborTableSet.setData[index].data.twoHopNeighborAddress;
+      if(oneHopAddress == bestOneHopNeighbor) {
+        neighborBitMapSet(&coveredTwoHopNeighbor, twoHopAddress);
+      }
+    }
+    // 计算剩余二跳邻居集合
+    restTwoHopNeighbor = ~coveredTwoHopNeighbor & twoHopBitMap;
+  }
+
+  return _MPRNeighborBitMap;
+}
+
+void populateMPRSelectorSet(Ranging_Message_With_Timestamp_t *rangingMessageWithTimestamp) {
+  // expire MPR Selector Set
+  MPRSelectorSetClearExpire(&MPRSelectorSet);
+
+  Ranging_Message_t *rangingMessage = &rangingMessageWithTimestamp->rangingMessage;
+  uint16_t srcAddress = rangingMessage->header.srcAddress;
+  Neighbor_Bit_Map_t MPRNeighborBitMap = rangingMessage->header.MPRNeighborBitMap;
+  if((((uint64_t)1 << MY_UWB_ADDRESS) & MPRNeighborBitMap) != 0) {
+    MPRSelectorSetInsert(&MPRSelectorSet, srcAddress);
+  }
+}
+
+bool isMPRSelector(uint16_t neighborAddress) {
+  Neighbor_Bit_Map_t MPRSelectorBitMap = MPRSelectorSet.MPRSelectorBitMap;
+  if((((uint64_t)1 << neighborAddress) & MPRSelectorBitMap) != 0) {
+    return true;
+  }
+  return false;
 }
 
 LOG_GROUP_START(Ranging)

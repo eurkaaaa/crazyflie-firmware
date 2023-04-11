@@ -357,8 +357,7 @@ static void uwbTaskInit() {
               ADHOC_DECK_TASK_PRI, &uwbTxTaskHandle); // TODO optimize STACK SIZE
   rangingInit();
 //  routingInit();
-  floodingInit();
-
+  // floodingInit();
 }
 /*********** Deck driver initialization ***************/
 static void dwm3000Init(DeckInfo *info) {
