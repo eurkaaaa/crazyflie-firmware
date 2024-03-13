@@ -5,11 +5,12 @@
 #include "mac_802_15_4.h"
 #include "queue.h"
 
-//#define UWB_DEBUG_ENABLE
+#define UWB_DEBUG_ENABLE
 #define UWB_RANGING_ENABLE
 #define UWB_ROUTING_ENABLE
 //#define UWB_RAFT_ENABLE
 //#define UWB_FLOODING_ENABLE
+#define UWB_EVENT_ENABLE
 
 /* Function Switch */
 //#define UWB_ENABLE_PHR_EXT_MODE
@@ -88,6 +89,7 @@ typedef enum {
 typedef struct {
   UWB_Address_t srcAddress; // mac address, currently using MY_UWB_ADDRESS
   UWB_Address_t destAddress; // mac address
+  uint8_t event; // event of src
   UWB_MESSAGE_TYPE type: 6;
   uint16_t length: 10;
 } __attribute__((packed)) UWB_Packet_Header_t;
@@ -115,5 +117,12 @@ int uwbReceivePacket(UWB_MESSAGE_TYPE type, UWB_Packet_t *packet);
 int uwbReceivePacketBlock(UWB_MESSAGE_TYPE type, UWB_Packet_t *packet);
 int uwbReceivePacketWait(UWB_MESSAGE_TYPE type, UWB_Packet_t *packet, int wait);
 void uwbRegisterListener(UWB_Message_Listener_t *listener);
+
+/* Reliable net operations */
+int getQueueOccupation(const xQueueHandle queue);
+int getQueueFullSize(const xQueueHandle queue);
+
+/* TEST: Power adjustment */
+void setTxConfigPower(uint32_t power);
 
 #endif

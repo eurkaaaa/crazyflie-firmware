@@ -1228,6 +1228,9 @@ static void uwbRangingTxTask(void *parameters) {
   txPacketCache.header.destAddress = UWB_DEST_ANY;
   txPacketCache.header.type = UWB_RANGING_MESSAGE;
   txPacketCache.header.length = 0;
+  /* Test */
+  txPacketCache.header.event = 0x01;
+  /* End */
   Ranging_Message_t *rangingMessage = (Ranging_Message_t *) &txPacketCache.payload;
 
   while (true) {
@@ -1262,12 +1265,12 @@ static void uwbRangingRxTask(void *parameters) {
       xSemaphoreGive(neighborSet.mu);
       xSemaphoreGive(rangingTableSet.mu);
     }
-    vTaskDelay(M2T(1));
+    vTaskDelay(M2T(25));
   }
 }
 
 void rangingRxCallback(void *parameters) {
-  // DEBUG_PRINT("rangingRxCallback \n");
+  DEBUG_PRINT("rangingRxCallback \n");
 
   BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 
@@ -1281,6 +1284,11 @@ void rangingRxCallback(void *parameters) {
   rxMessageWithTimestamp.rangingMessage = *rangingMessage;
 
   xQueueSendFromISR(rxQueue, &rxMessageWithTimestamp, &xHigherPriorityTaskWoken);
+
+  /* Test */
+  int occupation = getQueueOccupation(rxQueue);
+  int full = getQueueFullSize(rxQueue);
+  DEBUG_PRINT("Occupation of Queue RANGING is %d, the full is %d\n", occupation, full);
 }
 
 void rangingTxCallback(void *parameters) {

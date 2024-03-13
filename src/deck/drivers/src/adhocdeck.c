@@ -26,6 +26,7 @@
 #include "flooding.h"
 #include "routing.h"
 #include "raft.h"
+#include "event.h"
 
 #ifndef UWB_DEBUG_ENABLE
   #undef DEBUG_PRINT
@@ -102,6 +103,11 @@ static void rxCallback() {
     dwt_rxenable(DWT_START_RX_IMMEDIATE);
     return;
   }
+
+  /* Event test */
+  // uint32_t event = 0x01;
+  TaskHandle_t taskHandle = eventGetTaskHandle();
+  xTaskNotify((TaskHandle_t)taskHandle, (uint32_t)packet->header.event, (eNotifyAction)eSetBits);
 
   if (listeners[msgType].rxCb) {
     listeners[msgType].rxCb(packet);
@@ -375,7 +381,7 @@ static void queueInit() {
 }
 
 static void uwbTaskInit() {
-  /* Create UWB Task */
+  /* Create UWB Task */ 
   xTaskCreate(uwbTask, ADHOC_DECK_TASK_NAME, UWB_TASK_STACK_SIZE, NULL,
               ADHOC_DECK_TASK_PRI, &uwbTaskHandle);
   xTaskCreate(uwbTxTask, ADHOC_DECK_TX_TASK_NAME, UWB_TASK_STACK_SIZE, NULL,
@@ -392,7 +398,26 @@ static void uwbTaskInit() {
 #ifdef UWB_FLOODING_ENABLE
   floodingInit();
 #endif
+#ifdef UWB_EVENT_ENABLE
+  eventInit();
+#endif
 }
+
+/************ Reliable net ops **********/
+int getQueueOccupation(const xQueueHandle queue) {
+  return uxQueueMessagesWaiting(queue);
+}
+
+int getQueueFullSize(const xQueueHandle queue) {
+  return uxQueueMessagesWaiting(queue) + uxQueueSpacesAvailable(queue);
+}
+
+/* TEST: Power adjustment */
+void setTxConfigPower(uint32_t power) {
+  uwbTxConfigOptions.power = power;
+  dwt_configuretxrf(&uwbTxConfigOptions);
+}
+
 /*********** Deck driver initialization ***************/
 static void dwm3000Init(DeckInfo *info) {
   pinInit();
