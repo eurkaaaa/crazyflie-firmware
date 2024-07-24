@@ -28,6 +28,7 @@
 
 #include <stdbool.h>
 #include "eprintf.h"
+#include "uart_receive.h"
 
 #define UART1_BAUDRATE           9600
 #define UART1_DATA_TIMEOUT_MS    1000
@@ -57,6 +58,7 @@ typedef enum {
     uart1ParityNone, uart1ParityEven, uart1ParityOdd
 } uart1Parity_t;
 
+// extern QueueHandle_t uart1queue;
 /**
  * Initialize the UART with parity None
  */

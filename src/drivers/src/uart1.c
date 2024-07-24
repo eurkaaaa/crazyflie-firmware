@@ -46,10 +46,11 @@
 /** This uart is conflicting with SPI2 DMA used in sensors_bmi088_spi_bmp388.c
  *  which is used in CF-Bolt. So for other products this can be enabled.
  */
-//#define ENABLE_UART1_DMA
+// #define ENABLE_UART1_DMA
 
 #define QUEUE_LENGTH 64
-static xQueueHandle uart1queue;
+xQueueHandle uart1queue;
+SemaphoreHandle_t UartRxReady;
 STATIC_MEM_QUEUE_ALLOC(uart1queue, QUEUE_LENGTH, sizeof(uint8_t));
 
 static bool isInit = false;
@@ -115,7 +116,6 @@ void uart1Init(const uint32_t baudrate) {
 
 void uart1InitWithParity(const uint32_t baudrate, const uart1Parity_t parity)
 {
-
   USART_InitTypeDef USART_InitStructure;
   GPIO_InitTypeDef GPIO_InitStructure;
   NVIC_InitTypeDef NVIC_InitStructure;
@@ -171,7 +171,7 @@ void uart1InitWithParity(const uint32_t baudrate, const uart1Parity_t parity)
   NVIC_Init(&NVIC_InitStructure);
 
   uart1queue = STATIC_MEM_QUEUE_CREATE(uart1queue);
-
+  ASSERT(uart1queue != NULL);
   USART_ITConfig(UART1_TYPE, USART_IT_RXNE, ENABLE);
 
   //Enable UART
@@ -206,7 +206,7 @@ bool uart1GetDataWithDefaultTimeout(uint8_t *c)
 void uart1GetBytesWithDefaultTimeout(uint32_t size, uint8_t* data)
 {
   for (size_t i = 0; i < size; i++) {
-    xQueueReceive(uart1queue, &data[i], portMAX_DELAY);
+    xQueueReceive(uart1queue, &data[i], 0x00);
   }
 }
 
@@ -300,11 +300,18 @@ void __attribute__((used)) DMA1_Stream3_IRQHandler(void)
 
 void __attribute__((used)) USART3_IRQHandler(void)
 {
+  static uint8_t count = 0;
   if (USART_GetITStatus(UART1_TYPE, USART_IT_RXNE))
   {
     portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
     uint8_t rxData = USART_ReceiveData(UART1_TYPE) & 0x00FF;
     xQueueSendFromISR(uart1queue, &rxData, &xHigherPriorityTaskWoken);
+    count++;
+    if(count >= 6)
+    {
+      UartRxCallback();
+      count = 0;
+    }
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
   } else {
     /** if we get here, the error is most likely caused by an overrun!

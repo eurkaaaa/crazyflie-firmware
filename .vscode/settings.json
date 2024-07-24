@@ -5,6 +5,27 @@
         "**/bower_components": true
     },
     "files.associations": {
-        "bootloader.h": "c"
+        "bootloader.h": "c",
+        "adhocdeck.h": "c",
+        "numeric": "c",
+        "stdint.h": "c",
+        "stm32f4xx.h": "c",
+        "uart_dma_pulp.h": "c",
+        "stm32fxxx.h": "c",
+        "*.tcc": "c",
+        "string": "c",
+        "vector": "c",
+        "fstream": "c",
+        "limits": "c",
+        "sstream": "c",
+        "utility": "c",
+        "debug.h": "c",
+        "log.h": "c",
+        "app.h": "c",
+        "routing.h": "c",
+        "uart_syslink.h": "c",
+        "uart_receive.h": "c",
+        "uart1.h": "c",
+        "freertos.h": "c"
     }
 }
