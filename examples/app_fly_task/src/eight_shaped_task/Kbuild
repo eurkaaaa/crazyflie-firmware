@@ -1,0 +1,2 @@
+obj-y += eight_shaped_task.o
+

@@ -1,0 +1,1 @@
+obj-y += triangle_task.o
