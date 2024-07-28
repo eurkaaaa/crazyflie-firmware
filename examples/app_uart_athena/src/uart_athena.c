@@ -33,7 +33,6 @@ struct fly_parm
     float roll;
 };
 
-// xQueueHandle uart1queue;
 SemaphoreHandle_t UartRxReady = NULL;
 static uint8_t Pos[6];
 static uint8_t Pos_new[6];
