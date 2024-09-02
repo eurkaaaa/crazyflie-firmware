@@ -92,7 +92,7 @@
 #include "mm_tdoa_robust.h"
 #include "mm_distance_robust.h"
 
-#define DEBUG_MODULE "ESTKALMAN"
+// #define DEBUG_MODULE "ESTKALMAN"
 #include "debug.h"
 #include "cfassert.h"
 
@@ -259,7 +259,7 @@ static void kalmanTask(void* parameters) {
 
       if (nowMs > warningBlockTimeMs) {
         warningBlockTimeMs = nowMs + WARNING_HOLD_BACK_TIME_MS;
-        DEBUG_PRINT("State out of bounds, resetting\n");
+        // DEBUG_PRINT("State out of bounds, resetting\n");
       }
     }
 

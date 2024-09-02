@@ -51,6 +51,7 @@
 
 #define QUEUE_LENGTH 64
 xQueueHandle uart1queue;
+SemaphoreHandle_t UartRxReady;
 STATIC_MEM_QUEUE_ALLOC(uart1queue, QUEUE_LENGTH, sizeof(uint8_t));
 
 static bool isInit = false;

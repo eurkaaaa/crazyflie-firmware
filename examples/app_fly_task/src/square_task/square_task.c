@@ -39,7 +39,7 @@
 #include "log.h"
 #define DEBUG_MODULE "SQUARE_TASK"
 static setpoint_t setpoint;
-static float height = 0.5;
+static float height = 2.0;
 extern SemaphoreHandle_t fly_Semaphore;
 
 State state = idle;
@@ -86,7 +86,7 @@ void control_fly_square(int fly_case)
     case stage_one:
         for (int i = 0; i < 100; i++)
         {
-            setHoverSetpoint(&setpoint, 0.33, 0, height, 0);
+            setHoverSetpoint(&setpoint, 0.1, 0, height, 0);
             vTaskDelay(M2T(10));
         }
         DEBUG_PRINT("stage_one_square\n");
@@ -95,7 +95,7 @@ void control_fly_square(int fly_case)
     case stage_two:
         for (int i = 0; i < 100; i++)
         {
-            setHoverSetpoint(&setpoint, 0, 0.33, height, 0);
+            setHoverSetpoint(&setpoint, 0, 0.1, height, 0);
             vTaskDelay(M2T(10));
         }
         DEBUG_PRINT("stage_two_square\n");
@@ -104,7 +104,7 @@ void control_fly_square(int fly_case)
     case stage_three:
         for (int i = 0; i < 100; i++)
         {
-            setHoverSetpoint(&setpoint, -0.33, 0, height, 0);
+            setHoverSetpoint(&setpoint, -0.1, 0, height, 0);
             vTaskDelay(M2T(10));
         }
         DEBUG_PRINT("stage_three_square\n");
@@ -113,7 +113,7 @@ void control_fly_square(int fly_case)
     case stage_four:
         for (int i = 0; i < 100; i++)
         {
-            setHoverSetpoint(&setpoint, 0, -0.33, height, 0);
+            setHoverSetpoint(&setpoint, 0, -0.1, height, 0);
             vTaskDelay(M2T(10));
         }
         DEBUG_PRINT("stage_four_square\n");
