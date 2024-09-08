@@ -3,7 +3,7 @@
 	url = https://github.com/ARM-software/CMSIS_5.git
 [submodule "vendor/FreeRTOS"]
 	path = vendor/FreeRTOS
-	url = https://github.com/FreeRTOS/FreeRTOS-Kernel.git
+	url = https://github.com/eurkaaaa/FreeRTOS-Kernel.git
 [submodule "vendor/cmock"]
 	path = vendor/cmock
 	url = https://github.com/throwtheswitch/cmock.git
