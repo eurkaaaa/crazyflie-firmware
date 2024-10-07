@@ -6,6 +6,8 @@
     },
     "files.associations": {
         "bootloader.h": "c",
-        "triangle_task.h": "c"
+        "triangle_task.h": "c",
+        "uart2.h": "c",
+        "algorithm": "c"
     }
 }

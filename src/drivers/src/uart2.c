@@ -44,6 +44,12 @@
 #include "config.h"
 #include "nvicconf.h"
 #include "static_mem.h"
+#include "uart_receive.h"
+
+#define QUEUE_LENGTH 64
+xQueueHandle uart2queue;
+SemaphoreHandle_t UartRxReady;
+STATIC_MEM_QUEUE_ALLOC(uart2queue, QUEUE_LENGTH, sizeof(uint8_t));
 
 static xSemaphoreHandle uartBusy;
 static StaticSemaphore_t uartBusyBuffer;
@@ -61,7 +67,6 @@ static StreamBufferHandle_t rxStream;
 static EventGroupHandle_t isrEvents;
 
 static bool hasOverrun = false;
-
 /**
   * Configures the UART DMA. Mainly used for FreeRTOS trace
   * data transfer.
@@ -295,13 +300,19 @@ void __attribute__((used)) DMA1_Stream6_IRQHandler(void)
 
 void __attribute__((used)) USART2_IRQHandler(void)
 {
-
+  static uint8_t count = 0;
   uint32_t status = UART2_TYPE->SR;
   if ((UART2_TYPE->SR & USART_FLAG_RXNE) != 0)
   {
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
     uint8_t rxData = USART_ReceiveData(UART2_TYPE) & 0x00FF;
     xStreamBufferSendFromISR(rxStream, &rxData, 1, &xHigherPriorityTaskWoken );
+    count++;
+    if(count >= 16)
+    {
+      count = 0;
+      UartRxCallback();
+    }
     portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
   }
 

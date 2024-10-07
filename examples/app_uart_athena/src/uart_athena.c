@@ -88,8 +88,8 @@ void printPara_Char(int para)
 
 static void Init()
 {
-    // positionTimer = xTimerCreate("positionTimer", M2T(1000), pdTRUE, (void*)0, para_update);
-    // xTimerStart(positionTimer, M2T(0));
+    positionTimer = xTimerCreate("positionTimer", M2T(1000), pdTRUE, (void*)0, Fly_parm_update);
+    xTimerStart(positionTimer, M2T(0));
     UartRxReady = xSemaphoreCreateMutex();
     uart1Init(115200);
     // Pos[0] = 1;

@@ -12,6 +12,7 @@
 
 extern SemaphoreHandle_t UartRxReady;
 extern xQueueHandle uart1queue;
+extern xQueueHandle uart2queue;
 
 void UartRxCallback(void);
 
