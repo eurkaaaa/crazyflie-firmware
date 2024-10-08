@@ -15,6 +15,7 @@
 #include "commander.h"
 #include "stabilizer_types.h"
 #include "timers.h"
+#include "stream_buffer.h"
 
 #include "debug.h"
 #include "log.h"
@@ -39,6 +40,7 @@ struct fly_parm
 SemaphoreHandle_t ParaReady;
 // static uint8_t Pos[17];
 // static uint8_t Pos_new[17];
+// static uint8_t Pos[16];
 static uint8_t Pos_new[16];
 static TimerHandle_t positionTimer;
 static TaskHandle_t appMainTask_Handler;
@@ -65,6 +67,24 @@ static float Para[4];
 
 //     uart2SendData(sizeof(Pos),Pos);
 // }
+
+void para_init()
+{
+    Para[0] = 1.0;
+    Para[1] = 2.0;
+    Para[2] = 5.0;
+    Para[3] = 8.0;
+    uint8_t *Pos = (uint8_t *)Para;
+    for(int i=0;i<16;i++)
+    {
+        DEBUG_PRINT("%d \t", *(Pos+i));
+    }
+    DEBUG_PRINT("\n");
+    uart2SendData(16, Pos);
+    // memcpy(Pos, (uint8_t *)Para, 16);
+    // Pos[16] = 0;
+    // uart2SendData(17, Pos);
+}
 
 void para_update()
 {
@@ -125,20 +145,21 @@ void land()
 
 static void Uart_Receive()
 {
-    // DEBUG_PRINT("uart_receive ...succ\n");
+    DEBUG_PRINT("uart_receive ...succ\n");
     uint8_t index = 0;
     for(;;)
     {    
       if (xSemaphoreTake(UartRxReady, 0) == pdPASS) 
       {
-        while (index < 16 && xQueueReceive(uart2queue, &Pos_new[index], 0) == pdPASS) 
+        xStreamBufferSetTriggerLevel(rxStream, 1);
+        while (index < 6 && xStreamBufferReceive(rxStream, &Pos_new[index], 1, portMAX_DELAY) == 1) 
         {
-            vTaskDelay(M2T(1));
             index++;
+            vTaskDelay(M2T(10));
 		}
-		if(index == 16)
+		if(index == 6)
 		{
-            xSemaphoreGive(ParaReady);
+            // xSemaphoreGive(ParaReady);
             index = 0;
 		}
       }
@@ -150,39 +171,48 @@ static void Fly()
 {
     float para[4];
     memcpy(para, (float *)Pos_new, 16);
-    // uint8_t t = Pos_new[17];
-    for(int i=0;i < 100;i++)
+    for(int i=0;i<4;i++)
     {
-        setHoverSetpoint(&setpoint, para[0], para[1], para[2], para[3]);
-        vTaskDelay(M2T(1));
+        DEBUG_PRINT("%f \t", para[i]);
     }
+    DEBUG_PRINT("\n");
+    // uint8_t t = Pos_new[17];
+    // for(int i=0;i < 100;i++)
+    // {
+    //     setHoverSetpoint(&setpoint, para[0], para[1], para[2], para[3]);
+    //     vTaskDelay(M2T(1));
+    // }
 }
 
 void appMain()
 {
+    // vTaskDelay(5000);
     UartRxReady = xSemaphoreCreateMutex();
     ParaReady = xSemaphoreCreateMutex();
-    positionTimer = xTimerCreate("positionTimer", M2T(200), pdTRUE, (void*)0, para_update);
-    xTimerStart(positionTimer, M2T(0));    
-    // xTaskCreate(Uart_Receive, "main_task", TASK_SIZE, NULL, TASK_PRI, &appMainTask_Handler);
-    // DEBUG_PRINT("main_task ...succ\n");
     uart2Init(115200);
     vTaskDelay(M2T(10000));
     //plan 1
-    while(1)
-    {
-        if (xSemaphoreTake(ParaReady, 0) == pdPASS) 
-        {
-            Fly();
-        }
-        vTaskDelay(M2T(100));
-    }
-    //plan 2
     // while(1)
     // {
-    //     para_update();
-    //     uart2GetData(16, Pos_new);
-    //     Fly();
+    //     if (xSemaphoreTake(ParaReady, 0) == pdPASS) 
+    //     {
+    //         Fly();
+    //     }
+    //     vTaskDelay(M2T(100));
     // }
-
+    //plan 2
+    while(1)
+    {
+        para_init();
+        DEBUG_PRINT("send\n");
+        uart2GetData(16, Pos_new);
+        for(int i=0;i<16;i++)
+        {
+            DEBUG_PRINT("%d \t",Pos_new[i]);
+        }
+        DEBUG_PRINT("\n");
+        DEBUG_PRINT("rece \n");
+        Fly();
+        vTaskDelay(M2T(100));
+    }
 }
