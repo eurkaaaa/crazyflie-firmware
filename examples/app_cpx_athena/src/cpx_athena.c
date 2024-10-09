@@ -42,10 +42,11 @@ SemaphoreHandle_t ParaReady;
 // static uint8_t Pos_new[17];
 // static uint8_t Pos[16];
 static uint8_t Pos_new[16];
+static uint8_t state[1];
 static TimerHandle_t positionTimer;
 static TaskHandle_t appMainTask_Handler;
 static setpoint_t setpoint;
-static float height = 0.5;
+static float height = 1.0;
 static float Para[4];
 
 // void Fly_parm_update()
@@ -111,14 +112,15 @@ static void Init()
 
 static void setHoverSetpoint(setpoint_t *setpoint, float vx, float vy, float z, float yawrate)
 {
-    setpoint->mode.z = modeAbs;
-    setpoint->position.z = z;
     setpoint->mode.yaw = modeVelocity;
     setpoint->attitudeRate.yaw = yawrate;
     setpoint->mode.x = modeVelocity;
     setpoint->mode.y = modeVelocity;
+    setpoint->mode.z = modeAbs;
+    setpoint->position.z = z;
     setpoint->velocity.x = vx;
     setpoint->velocity.y = vy;
+   // setpoint->velocity.z = vz;
     setpoint->velocity_body = true;
     commanderSetSetpoint(setpoint, 3);
 }
@@ -170,18 +172,31 @@ static void Uart_Receive()
 static void Fly()
 {
     float para[4];
+    bool flag = 0;
     memcpy(para, (float *)Pos_new, 16);
     for(int i=0;i<4;i++)
     {
-        DEBUG_PRINT("%f \t", para[i]);
+        if(para[i] != 0)
+        {
+            flag = 1;
+        }
     }
-    DEBUG_PRINT("\n");
-    // uint8_t t = Pos_new[17];
-    // for(int i=0;i < 100;i++)
+    if(flag == 0)
+    {
+        land();
+        return;
+    }
+    for(int i=0;i < 100;i++)
+    {
+        setHoverSetpoint(&setpoint, para[0], para[1], para[2], para[3]);
+        vTaskDelay(M2T(10));
+    }
+   // vTaskDelay(10000);
+    // for(int i=0;i<4;i++)
     // {
-    //     setHoverSetpoint(&setpoint, para[0], para[1], para[2], para[3]);
-    //     vTaskDelay(M2T(1));
+    //     DEBUG_PRINT("%f \t", para[i]);
     // }
+    // DEBUG_PRINT("\n");
 }
 
 void appMain()
@@ -190,29 +205,26 @@ void appMain()
     UartRxReady = xSemaphoreCreateMutex();
     ParaReady = xSemaphoreCreateMutex();
     uart2Init(115200);
-    vTaskDelay(M2T(10000));
-    //plan 1
-    // while(1)
-    // {
-    //     if (xSemaphoreTake(ParaReady, 0) == pdPASS) 
-    //     {
-    //         Fly();
-    //     }
-    //     vTaskDelay(M2T(100));
-    // }
-    //plan 2
+    vTaskDelay(M2T(5000));
+    state[0] = 0;
     while(1)
     {
-        para_init();
-        DEBUG_PRINT("send\n");
-        uart2GetData(16, Pos_new);
-        for(int i=0;i<16;i++)
+        // para_init();
+        if(state[0]<6)
         {
-            DEBUG_PRINT("%d \t",Pos_new[i]);
+            uart2SendData(1, state);
+            DEBUG_PRINT("send\n");
+            uart2GetData(16, Pos_new);
+            // for(int i=0;i<16;i++)
+            // {
+            //     DEBUG_PRINT("%d \t",Pos_new[i]);
+            // }
+            // DEBUG_PRINT("\n");
+            Fly();
+            DEBUG_PRINT("rece \n");
+            state[0]++;
+            DEBUG_PRINT("%d", state[0]);
         }
-        DEBUG_PRINT("\n");
-        DEBUG_PRINT("rece \n");
-        Fly();
-        vTaskDelay(M2T(100));
+        vTaskDelay(M2T(10));
     }
 }
