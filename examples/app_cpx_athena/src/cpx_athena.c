@@ -120,13 +120,25 @@ static void Fly()
 void appMain()
 {
     uart2Init(115200);
+    Pos_new[16] = 0;
+    Pos[25] = 0;
     vTaskDelay(M2T(5000));
     while(1)
     {
         Fly_parm_update();
+        for(int i=0;i<26;i++)
+        {
+            DEBUG_PRINT("%d \t",Pos[i]);
+        }
+        DEBUG_PRINT("\n");
         uart2SendData(26, Pos);
         DEBUG_PRINT("send\n");
         uart2GetData(17, Pos_new);
+        for(int i=0;i<17;i++)
+        {
+            DEBUG_PRINT("%d \t",Pos_new[i]);
+        }
+        DEBUG_PRINT("\n");
         DEBUG_PRINT("rece \n");
         switch (Pos_new[16])
         {
