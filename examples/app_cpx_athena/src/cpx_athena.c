@@ -16,6 +16,7 @@
 #include "stabilizer_types.h"
 #include "timers.h"
 #include "stream_buffer.h"
+#include "crtp_commander_high_level.h"
 
 #include "debug.h"
 #include "log.h"
@@ -40,32 +41,48 @@ struct fly_parm
 SemaphoreHandle_t ParaReady;
 // static uint8_t Pos[17];
 // static uint8_t Pos_new[17];
-static uint8_t Pos[16];
-static uint8_t Pos_new[16];
+static uint8_t Pos[36];
+static uint8_t Pos_new[36];
 static uint8_t state[1];
 static TimerHandle_t positionTimer;
 static TaskHandle_t appMainTask_Handler;
 static setpoint_t setpoint;
 static float height = 1.0;
-static float Para[4];
+static float Para[9];
+static float para_new[4];
+static float padX;
+static float padY;
+static float padZ;
+static logVarId_t logIdStateEstimateX;
+static logVarId_t logIdStateEstimateY;
+static logVarId_t logIdStateEstimateZ;
+static logVarId_t logIdStateEstimateYaw;
+static logVarId_t logIdStateEstimatePitch;
+static logVarId_t logIdStateEstimateRoll;
+static float getX() { return logGetFloat(logIdStateEstimateX); }
+static float getY() { return logGetFloat(logIdStateEstimateY); }
+static float getZ() { return logGetFloat(logIdStateEstimateZ); }
+static float getYaw() { return logGetFloat(logIdStateEstimateYaw); }
+static float getPitch() { return logGetFloat(logIdStateEstimatePitch); }
+static float getRoll() { return logGetFloat(logIdStateEstimateRoll); }
 
 void para_init()
 {
-    // Para[0] = 1.0;
-    // Para[1] = 2.0;
-    // Para[2] = 5.0;
-    // Para[3] = 8.0;
-    // uint8_t *Pos = (uint8_t *)Para;
-    for(int i=0;i<16;i++)
-    {
-        Pos[i] = i+1;
-        // DEBUG_PRINT("%d \t", *(Pos+i));
-    }
-    DEBUG_PRINT("\n");
-    uart2SendData(16, Pos);
-    // memcpy(Pos, (uint8_t *)Para, 16);
-    // Pos[16] = 0;
-    // uart2SendData(17, Pos);
+    logIdStateEstimateX = logGetVarId("stateEstimate", "x");
+    logIdStateEstimateY = logGetVarId("stateEstimate", "y");
+    logIdStateEstimateZ = logGetVarId("stateEstimate", "z");
+    logIdStateEstimateYaw = logGetVarId("stateEstimate", "yaw");
+    logIdStateEstimatePitch = logGetVarId("stateEstimate", "pitch");
+    logIdStateEstimateRoll = logGetVarId("stateEstimate", "roll");
+
+    Para[0] = getX();
+    Para[1] = getY();
+    Para[2] = getZ();
+    Para[3] = getYaw();
+    // Para[4] = logGetFloat(idPitch);
+    // Para[5] = logGetFloat(idRoll);
+
+    memcpy(Pos, (uint8_t *)Para, 16);
 }
 
 void para_update()
@@ -126,28 +143,6 @@ void land()
     }
 }
 
-static void Uart_Receive()
-{
-    DEBUG_PRINT("uart_receive ...succ\n");
-    uint8_t index = 0;
-    for(;;)
-    {    
-      if (xSemaphoreTake(UartRxReady, 0) == pdPASS) 
-      {
-        xStreamBufferSetTriggerLevel(rxStream, 1);
-        while (index < 6 && xStreamBufferReceive(rxStream, &Pos_new[index], 1, portMAX_DELAY) == 1) 
-        {
-            index++;
-            vTaskDelay(M2T(10));
-		}
-		if(index == 6)
-		{
-            index = 0;
-		}
-      }
-      vTaskDelay(M2T(10));
-    }
-}
 
 static void Fly()
 {
@@ -179,6 +174,12 @@ static void Fly()
     // DEBUG_PRINT("\n");
 }
 
+void para_get()
+{
+    padX = para_new[0];
+    padY = para_new[1];
+    padZ = para_new[2];
+}
 
 void appMain()
 {
@@ -186,41 +187,67 @@ void appMain()
     UartRxReady = xSemaphoreCreateMutex();
     ParaReady = xSemaphoreCreateMutex();
     uart2Init(115200);
-    vTaskDelay(M2T(5000));
-    // state[0] = 0;
-    bool flag = 0;
+    vTaskDelay(M2T(10000));
     while(1)
     {
-        // para_init();
-        // if(state[0]<6)
-        // {
-        //     uart2SendData(1, state);
-        //     DEBUG_PRINT("send\n");
-        //     uart2GetData(16, Pos_new);
-        //     Fly();
-        //     DEBUG_PRINT("rece \n");
-        //     state[0]++;
-        //     DEBUG_PRINT("%d", state[0]);
-        // }
-        // if(flag == 0)
-        // {
-        //     uart2SendData(15,Pos);
-        //     flag = 1;
-        // }
-
         para_init();
-        for(int i=0;i<16;i++)
-        {
-            DEBUG_PRINT("%d \t", Pos[i]);
-        }
-        DEBUG_PRINT("send \n");
+        uart2SendData(26, Pos);
+        // for(int i=0;i<26;i++)
+        // {
+        //     DEBUG_PRINT("%d \t", Pos[i]);
+        // }
+        // DEBUG_PRINT("send \n");
         vTaskDelay(100);
-        uart2GetData(16, Pos_new);
-        for(int i=0;i<16;i++)
+        uart2GetData(17, Pos_new);
+        memcpy(para_new, (float *)Pos_new, 16); 
+        para_get();
+        switch (Pos_new[16])
         {
-            DEBUG_PRINT("%d \t", Pos_new[i]);
+        case 1:
+            crtpCommanderHighLevelTakeoff(0.3f, 1.0f);
+            // Pos[16] = 1;
+            break;
+        
+        case 2: 
+            crtpCommanderHighLevelGoTo(0.0f, 0.0f, 0.3f, 0.0f, 0.1f, 0);
+            // Pos[16] = 1;
+            break;
+
+        case 9:
+            crtpCommanderHighLevelLand(padZ, 1.0f);
+            // Pos[16] = 0;
+            break;
+
+        case 3:
+            crtpCommanderHighLevelGoTo(padX-0.1f, padY, padZ, 0.0f, 0.1f, 0);  
+            break;
+        case 4:
+            crtpCommanderHighLevelGoTo(padX+0.1f, padY, padZ, 0.0f, 0.1f, 0);  
+            break;  
+        case 5:
+            crtpCommanderHighLevelGoTo(padX, padY, padZ+0.1f, 0.0f, 0.1f, 0);  
+            break;  
+        case 6:
+            crtpCommanderHighLevelGoTo(padX, padY, padZ-0.1f, 0.0f, 0.1f, 0);  
+            break;
+        case 7:
+            crtpCommanderHighLevelGoTo(padX, padY+0.1f, padZ, 0.0f, 0.1f, 0);  
+            break;  
+        case 8:
+            crtpCommanderHighLevelGoTo(padX, padY-0.1f, padZ, 0.0f, 0.1f, 0);  
+            break;                   
+        default:
+            break;
         }
-        DEBUG_PRINT("receive \n");
+        // for(int i=0;i<17;i++)
+        // {
+        //     DEBUG_PRINT("%d \t", Pos_new[i]);
+        // }
+        // DEBUG_PRINT("receive \n");
         vTaskDelay(M2T(10));
     }
 }
+
+PARAM_GROUP_START(f_t)
+PARAM_ADD(PARAM_UINT8, flag, &Pos[16])
+PARAM_GROUP_STOP(f_t)
