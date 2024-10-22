@@ -79,10 +79,10 @@ void para_init()
     Para[1] = getY();
     Para[2] = getZ();
     Para[3] = getYaw();
-    // Para[4] = logGetFloat(idPitch);
-    // Para[5] = logGetFloat(idRoll);
+    Para[4] = getPitch();
+    Para[5] = getRoll();
 
-    memcpy(Pos, (uint8_t *)Para, 16);
+    memcpy(Pos, (uint8_t *)Para, 24);
 }
 
 void para_update()
@@ -188,9 +188,12 @@ void appMain()
     ParaReady = xSemaphoreCreateMutex();
     uart2Init(115200);
     vTaskDelay(M2T(10000));
+    Pos[24] = 0;
+    Pos[25] = 0;
     while(1)
     {
         para_init();
+        DEBUG_PRINT("crazyflie = %d \n",Pos[24]);
         uart2SendData(26, Pos);
         // for(int i=0;i<26;i++)
         // {
@@ -201,41 +204,30 @@ void appMain()
         uart2GetData(17, Pos_new);
         memcpy(para_new, (float *)Pos_new, 16); 
         para_get();
-        switch (Pos_new[16])
+        DEBUG_PRINT("X = %d \n",padX);
+        DEBUG_PRINT("Y = %d \n",padY);
+        DEBUG_PRINT("Z = %d \n",padZ);
+        for(int i=0;i<4;i++)
         {
+            DEBUG_PRINT("%f \t", *((float *)(Pos_new) + i));
+        }
+        DEBUG_PRINT("\n");
+        DEBUG_PRINT("athena = %d \n",Pos_new[16]);
+        switch (Pos_new[16])
+        {  
         case 1:
-            crtpCommanderHighLevelTakeoff(0.3f, 1.0f);
-            // Pos[16] = 1;
+            // crtpCommanderHighLevelTakeoff(padZ, 1.0f);
+            Pos[24] = 1;
             break;
-        
         case 2: 
-            crtpCommanderHighLevelGoTo(0.0f, 0.0f, 0.3f, 0.0f, 0.1f, 0);
-            // Pos[16] = 1;
-            break;
-
-        case 9:
-            crtpCommanderHighLevelLand(padZ, 1.0f);
-            // Pos[16] = 0;
+            // crtpCommanderHighLevelGoTo(padX, padY, padZ, 0.0f, 0.1f, 0);
+            Pos[24] = 1;
             break;
 
         case 3:
-            crtpCommanderHighLevelGoTo(padX-0.1f, padY, padZ, 0.0f, 0.1f, 0);  
-            break;
-        case 4:
-            crtpCommanderHighLevelGoTo(padX+0.1f, padY, padZ, 0.0f, 0.1f, 0);  
-            break;  
-        case 5:
-            crtpCommanderHighLevelGoTo(padX, padY, padZ+0.1f, 0.0f, 0.1f, 0);  
-            break;  
-        case 6:
-            crtpCommanderHighLevelGoTo(padX, padY, padZ-0.1f, 0.0f, 0.1f, 0);  
-            break;
-        case 7:
-            crtpCommanderHighLevelGoTo(padX, padY+0.1f, padZ, 0.0f, 0.1f, 0);  
-            break;  
-        case 8:
-            crtpCommanderHighLevelGoTo(padX, padY-0.1f, padZ, 0.0f, 0.1f, 0);  
-            break;                   
+            // crtpCommanderHighLevelLand(padZ, 1.0f);
+            Pos[24] = 0;
+            break;               
         default:
             break;
         }
@@ -249,5 +241,5 @@ void appMain()
 }
 
 PARAM_GROUP_START(f_t)
-PARAM_ADD(PARAM_UINT8, flag, &Pos[16])
+PARAM_ADD(PARAM_UINT8, flag, &Pos[25])
 PARAM_GROUP_STOP(f_t)
