@@ -41,8 +41,8 @@ struct fly_parm
 SemaphoreHandle_t ParaReady;
 // static uint8_t Pos[17];
 // static uint8_t Pos_new[17];
-static uint8_t Pos[36];
-static uint8_t Pos_new[36];
+static uint8_t Pos[26];
+static uint8_t Pos_new[17];
 static uint8_t state[1];
 static TimerHandle_t positionTimer;
 static TaskHandle_t appMainTask_Handler;
@@ -204,28 +204,32 @@ void appMain()
         uart2GetData(17, Pos_new);
         memcpy(para_new, (float *)Pos_new, 16); 
         para_get();
-        DEBUG_PRINT("X = %d \n",padX);
-        DEBUG_PRINT("Y = %d \n",padY);
-        DEBUG_PRINT("Z = %d \n",padZ);
+        DEBUG_PRINT("X = %f \n",padX);
+        DEBUG_PRINT("Y = %f \n",padY);
+        DEBUG_PRINT("Z = %f \n",padZ);
         for(int i=0;i<4;i++)
         {
             DEBUG_PRINT("%f \t", *((float *)(Pos_new) + i));
         }
+        // for(int i=0;i<17;i++)
+        // {
+            // DEBUG_PRINT("%d \t", Pos_new[i]);
+        // }
         DEBUG_PRINT("\n");
         DEBUG_PRINT("athena = %d \n",Pos_new[16]);
         switch (Pos_new[16])
         {  
         case 1:
-            // crtpCommanderHighLevelTakeoff(padZ, 1.0f);
+            crtpCommanderHighLevelTakeoff(padZ, 1.0f);
             Pos[24] = 1;
             break;
         case 2: 
-            // crtpCommanderHighLevelGoTo(padX, padY, padZ, 0.0f, 0.1f, 0);
+            crtpCommanderHighLevelGoTo(padX, padY, padZ, 0.0f, 0.1f, 0);
             Pos[24] = 1;
             break;
 
         case 3:
-            // crtpCommanderHighLevelLand(padZ, 1.0f);
+            crtpCommanderHighLevelLand(padZ, 1.0f);
             Pos[24] = 0;
             break;               
         default:

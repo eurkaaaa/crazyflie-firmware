@@ -8,6 +8,8 @@
         "bootloader.h": "c",
         "triangle_task.h": "c",
         "uart2.h": "c",
-        "algorithm": "c"
+        "algorithm": "c",
+        "ledseq.h": "c",
+        "app.h": "c"
     }
 }
