@@ -8,6 +8,7 @@
 #include "task.h"
 #include "log.h"
 #include "uart_receive.h"
+#include "uart1.h"
 #include "uart2.h"
 #include "estimator_kalman.h"
 #include "semphr.h"
@@ -39,11 +40,9 @@ struct fly_parm
 };
 
 SemaphoreHandle_t ParaReady;
-// static uint8_t Pos[17];
-// static uint8_t Pos_new[17];
+static uint8_t buffer[64];
 static uint8_t Pos[26];
 static uint8_t Pos_new[17];
-static uint8_t state[1];
 static TimerHandle_t positionTimer;
 static TaskHandle_t appMainTask_Handler;
 static setpoint_t setpoint;
@@ -93,9 +92,6 @@ void para_update()
     Para[3] = setpoint.attitudeRate.yaw;
     uint8_t *Pos = (uint8_t *)Para;
     uart2SendData(16, Pos);
-    // memcpy(Pos, (uint8_t *)Para, 16);
-    // Pos[16] = 0;
-    // uart2SendData(17, Pos);
 }
 
 
@@ -123,55 +119,31 @@ static void setHoverSetpoint(setpoint_t *setpoint, float vx, float vy, float z, 
     commanderSetSetpoint(setpoint, 3);
 }
 
-void take_off()
-{
-    for (int i = 0; i < 100; i++)
-    {
-        setHoverSetpoint(&setpoint, 0, 0, height, 0);
-        vTaskDelay(M2T(10));
-    }
-}
-void land()
-{
-    int i = 0;
-    float per_land = 0.05;
-    while (height - i * per_land >= 0.05f)
-    {
-        i++;
-        setHoverSetpoint(&setpoint, 0, 0, height - (float)i * per_land, 0);
-        vTaskDelay(M2T(10));
-    }
-}
-
+// void take_off()
+// {
+//     for (int i = 0; i < 100; i++)
+//     {
+//         setHoverSetpoint(&setpoint, 0, 0, height, 0);
+//         vTaskDelay(M2T(10));
+//     }
+// }
+// void land()
+// {
+//     int i = 0;
+//     float per_land = 0.05;
+//     while (height - i * per_land >= 0.05f)
+//     {
+//         i++;
+//         setHoverSetpoint(&setpoint, 0, 0, height - (float)i * per_land, 0);
+//         vTaskDelay(M2T(10));
+//     }
+// }
 
 static void Fly()
 {
     float para[4];
     bool flag = 0;
     memcpy(para, (float *)Pos_new, 16);
-    // for(int i=0;i<4;i++)
-    // {
-    //     if(para[i] != 0)
-    //     {
-    //         flag = 1;
-    //     }
-    // }
-    // if(flag == 0)
-    // {
-    //     land();
-    //     return;
-    // }
-    // for(int i=0;i < 100;i++)
-    // {
-    //     setHoverSetpoint(&setpoint, para[0], para[1], para[2], para[3]);
-    //     vTaskDelay(M2T(10));
-    // }
-   // vTaskDelay(10000);
-    // for(int i=0;i<4;i++)
-    // {
-    //     DEBUG_PRINT("%f \t", para[i]);
-    // }
-    // DEBUG_PRINT("\n");
 }
 
 void para_get()
@@ -181,12 +153,34 @@ void para_get()
     padZ = para_new[2];
 }
 
+static void Uart_Receive()
+{
+    DEBUG_PRINT("uart_receive ...succ\n");
+    uint8_t index = 0;
+    for(;;)
+    {    
+        while (xQueueReceive(uart1queue, &buffer[index], 0) == pdPASS) 
+        {
+            index++;
+		    if(index == 64 || buffer[index - 1] == '\n')
+		    {
+                consolePuts((const char *)buffer);
+                index = 0;
+		    }
+            vTaskDelay(M2T(10));
+		}
+       vTaskDelay(M2T(200));
+    }
+}
+
 void appMain()
 {
     // vTaskDelay(5000);
     UartRxReady = xSemaphoreCreateMutex();
     ParaReady = xSemaphoreCreateMutex();
+    uart1Init(115200);
     uart2Init(115200);
+    xTaskCreate(Uart_Receive, "main_task", TASK_SIZE, NULL, TASK_PRI, &appMainTask_Handler);
     vTaskDelay(M2T(10000));
     Pos[24] = 0;
     Pos[25] = 0;
@@ -195,11 +189,6 @@ void appMain()
         para_init();
         DEBUG_PRINT("crazyflie = %d \n",Pos[24]);
         uart2SendData(26, Pos);
-        // for(int i=0;i<26;i++)
-        // {
-        //     DEBUG_PRINT("%d \t", Pos[i]);
-        // }
-        // DEBUG_PRINT("send \n");
         vTaskDelay(100);
         uart2GetData(17, Pos_new);
         memcpy(para_new, (float *)Pos_new, 16); 
@@ -211,10 +200,6 @@ void appMain()
         {
             DEBUG_PRINT("%f \t", *((float *)(Pos_new) + i));
         }
-        // for(int i=0;i<17;i++)
-        // {
-            // DEBUG_PRINT("%d \t", Pos_new[i]);
-        // }
         DEBUG_PRINT("\n");
         DEBUG_PRINT("athena = %d \n",Pos_new[16]);
         switch (Pos_new[16])
@@ -235,11 +220,6 @@ void appMain()
         default:
             break;
         }
-        // for(int i=0;i<17;i++)
-        // {
-        //     DEBUG_PRINT("%d \t", Pos_new[i]);
-        // }
-        // DEBUG_PRINT("receive \n");
         vTaskDelay(M2T(10));
     }
 }

@@ -10,6 +10,7 @@
         "uart2.h": "c",
         "algorithm": "c",
         "ledseq.h": "c",
-        "app.h": "c"
+        "app.h": "c",
+        "uart1.h": "c"
     }
 }

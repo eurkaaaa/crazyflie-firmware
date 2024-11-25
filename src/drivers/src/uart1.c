@@ -308,12 +308,12 @@ void __attribute__((used)) USART3_IRQHandler(void)
     portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
     uint8_t rxData = USART_ReceiveData(UART1_TYPE) & 0x00FF;
     xQueueSendFromISR(uart1queue, &rxData, &xHigherPriorityTaskWoken);
-    count++;
-    if(count >= 6)
-    {
-      count = 0;
-      UartRxCallback();
-    }
+    // count++;
+    // if(rxData == '\n' || count >= 16)
+    // {
+    //   count = 0;
+    //   UartRxCallback();
+    // }
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
   } else {
     /** if we get here, the error is most likely caused by an overrun!
