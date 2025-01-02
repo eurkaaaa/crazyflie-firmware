@@ -60,7 +60,7 @@ static void Uart_Receive()
 void appMain()
 {
     //init
-    vTaskDelay(M2T(10000));
+    vTaskDelay(M2T(5000));
     Init();
     xTaskCreate(Uart_Receive, "main_task", TASK_SIZE, NULL, TASK_PRI, &appMainTask_Handler);
     DEBUG_PRINT("main_task ...succ\n");
